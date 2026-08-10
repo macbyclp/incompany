@@ -48,6 +48,7 @@ interface AuthState {
   }) => void;
 
   refreshAccessToken: () => Promise<string>;
+  hydrateFromServer: () => Promise<boolean>;
   logout: (reason?: string) => void;
   can: (permission: string) => boolean;
 }
@@ -122,6 +123,48 @@ export const authStore = create<AuthState>((set, get) => ({
     })();
 
     return refreshInFlight;
+  },
+
+  /**
+   * `/auth/me`'yi çağırıp tam profili (rol, izin, ad) depoya yazar.
+   *
+   * ÜÇ YERDEN çağrılır: sayfa ilk yüklendiğinde (refresh çerezi varsa),
+   * SSO geri dönüşünde ve kurulum sihirbazı tamamlandığında. Mantık TEK
+   * yerde durur — üçü ayrı ayrı yazılsaydı, `/auth/me` yanıtının şekli
+   * değiştiğinde biri güncellenmeyi unuturdu.
+   *
+   * Çağıran taraf, bunu çağırmadan ÖNCE `accessToken`'ın depoda geçerli
+   * bir değerle ayarlanmış olmasını sağlamalıdır (`refreshAccessToken`
+   * veya bir giriş/kurulum yanıtından).
+   */
+  hydrateFromServer: async () => {
+    try {
+      const response = await fetch('/api/v1/auth/me', { credentials: 'include' });
+      if (!response.ok) return false;
+
+      const me = (await response.json()) as {
+        id: string;
+        orgId: string;
+        email?: string;
+        displayName?: string;
+        roles: GlobalRole[];
+        permissions: string[];
+      };
+
+      get().setSession({
+        userId: me.id,
+        orgId: me.orgId,
+        email: me.email ?? '',
+        displayName: me.displayName ?? '',
+        roles: me.roles,
+        permissions: me.permissions,
+        accessToken: get().accessToken,
+        expiresAt: get().accessTokenExpiresAt,
+      });
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   logout: (reason) => {

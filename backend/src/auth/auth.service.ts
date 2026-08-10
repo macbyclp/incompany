@@ -9,6 +9,7 @@ import { DatabaseService } from '../common/database/database.service';
 import { AuditService } from '../audit/audit.service';
 import { TokenDenylistService } from './token-denylist.service';
 import { UserSecurityCache } from './user-security.cache';
+import { verifyPassword } from './password.util';
 import {
   TOKEN_TTL,
   type JwtAccessPayload,
@@ -37,11 +38,18 @@ import {
  *   kesindir ve kullanıcı yeniden giriş yaparak temiz bir aile başlatır.
  *   Alternatif — hiçbir şey yapmamak — saldırganın süresiz erişimi demektir.
  *
- * PAROLA YOK (varsayılan)
- *   Kimlik doğrulama IdP'de (Azure AD / Okta / ADFS) yapılır. Bu sistem
- *   parola saklamaz, doğrulamaz ve sıfırlamaz. MFA, parola politikası ve
- *   hesap kilitleme kurumun mevcut IdP'sinin sorumluluğundadır — bunları
- *   yeniden uygulamak hem gereksiz hem daha zayıf olur.
+ * İKİ GİRİŞ YOLU
+ *   Kurumsal dağıtımlarda kimlik doğrulama IdP'de (Azure AD / Okta / ADFS)
+ *   yapılmalıdır — MFA, parola politikası ve hesap kilitleme kurumun mevcut
+ *   IdP'sinin sorumluluğuna bırakılır, burada yeniden uygulanmaz.
+ *
+ *   Ancak SSO, kurulumdan HEMEN SONRA henüz yapılandırılmamıştır — ilk
+ *   yöneticinin sisteme girebileceği bir yol olmadan SSO'yu kuracak kimse
+ *   olmaz (tavuk-yumurta sorunu). Bu yüzden parola tabanlı giriş de
+ *   desteklenir: kurulum sihirbazının oluşturduğu ilk yönetici hesabı ve
+ *   isteğe bağlı olarak sonradan eklenen "yerel" hesaplar için. `scrypt`
+ *   ile karma alınır (bkz. `password.util.ts`) — bcrypt/argon2 gibi native
+ *   bağımlılık gerektiren paketler bilinçli olarak tercih edilmedi.
  */
 
 export interface TokenPair {
@@ -58,6 +66,25 @@ export interface SessionContext {
   deviceLabel?: string;
 }
 
+/**
+ * Zamanlama saldırısına karşı kukla karma.
+ *
+ * Kullanıcı bulunamadığında veya `password_hash` NULL olduğunda bile
+ * `verifyPassword` ÇALIŞTIRILIR (sonucu atılır). Aksi halde "kullanıcı yok"
+ * yanıtı, gerçek scrypt hesaplamasını atladığı için "kullanıcı var ama
+ * parola yanlış" yanıtından ölçülebilir biçimde daha hızlı döner — bu fark,
+ * bir saldırganın geçerli e-posta adreslerini numaralandırmasına yeter.
+ *
+ * Değerler rastgele üretilmiştir; hiçbir gerçek parolayla eşleşmesi
+ * beklenmez veya gerekmez — yalnızca `scrypt$<32 hex>$<128 hex>` biçimini
+ * karşılayıp `verifyPassword`'ün format kontrolünü geçmesi ve gerçek
+ * scrypt turunu çalıştırması gerekir.
+ */
+const DUMMY_HASH_FOR_TIMING =
+  'scrypt$2056fd5974ad7ffa79ddef350e4f430a$' +
+  '9a96f3736197c6199846dde5f160e1bd5321bf273a99f2a46b2b8922c96cc8a' +
+  'b3572c03efd412bc13bee75cc84d2af62d5f1944f2f488c73967e6714e4f41e18';
+
 interface UserAuthRecord {
   id: string;
   org_id: string;
@@ -65,6 +92,7 @@ interface UserAuthRecord {
   display_name: string;
   status: 'ACTIVE' | 'SUSPENDED' | 'DEPROVISIONED';
   token_version: number;
+  password_hash: string | null;
   roles: GlobalRole[] | null;
   permissions: string[] | null;
 }
@@ -156,6 +184,114 @@ export class AuthService {
       ipAddress: context.ipAddress,
       userAgent: context.userAgent,
       metadata: { idpProvider },
+    });
+
+    return {
+      ...tokens,
+      user: { id: user.id, email: user.email, displayName: user.display_name },
+    };
+  }
+
+  /**
+   * Parola ile giriş.
+   *
+   * KİMİN İÇİN? Kurulum sihirbazının oluşturduğu ilk yönetici ve SSO
+   * yapılandırılana kadar (veya hiç yapılandırılmayacaksa süresiz) tüm
+   * kullanıcılar. `password_hash` sütunu NULL olan bir hesap (yalnızca SSO
+   * ile provizyon edilmiş) bu yoldan giriş YAPAMAZ — aşağıdaki kontrol
+   * bunu garanti eder.
+   *
+   * Hesap sayımı (enumeration) saldırısına karşı `loginWithIdp` ile AYNI
+   * disiplin uygulanır: kullanıcı yoksa da parola yanlışsa da aynı genel
+   * hata mesajı döner, aynı audit action'ı yazılır.
+   */
+  async loginWithPassword(
+    orgSlug: string,
+    email: string,
+    password: string,
+    context: SessionContext,
+  ): Promise<TokenPair & { user: { id: string; email: string; displayName: string } }> {
+    const org = await this.db.queryMaybe<{ id: string }>(
+      'SELECT id FROM organizations WHERE slug = $1 AND is_active = true',
+      [orgSlug],
+    );
+
+    // Org bulunamasa bile SABİT bir gecikme uygulamak için sahte bir
+    // scrypt turu çalıştırılır — aksi halde "org yok" yanıtı "org var ama
+    // e-posta yok" yanıtından ÖLÇÜLEBİLİR biçimde daha hızlı döner ve bu,
+    // saldırgana geçerli organizasyon slug'larını numaralandırma imkânı verir.
+    if (!org) {
+      await verifyPassword(password, DUMMY_HASH_FOR_TIMING);
+      throw new UnauthorizedException('Kimlik dogrulama basarisiz');
+    }
+
+    const user = await this.loadUserByOrgEmail(org.id, email);
+
+    if (!user || !user.password_hash) {
+      // `user` yok VEYA yalnızca SSO ile provizyon edilmiş (password_hash
+      // NULL). İkisi de aynı genel mesajla reddedilir — hangisi olduğunu
+      // açık etmek hesap sayımına zemin hazırlar.
+      await verifyPassword(password, DUMMY_HASH_FOR_TIMING);
+      await this.audit.record({
+        orgId: org.id,
+        action: 'auth.login_failed',
+        resourceType: 'user',
+        resourceId: email,
+        outcome: 'FAILURE',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: { reason: 'invalid_credentials', method: 'password' },
+      });
+      throw new UnauthorizedException('Kimlik dogrulama basarisiz');
+    }
+
+    const valid = await verifyPassword(password, user.password_hash);
+    if (!valid) {
+      await this.audit.record({
+        orgId: org.id,
+        actorId: user.id,
+        actorEmail: user.email,
+        action: 'auth.login_failed',
+        resourceType: 'user',
+        resourceId: user.id,
+        outcome: 'FAILURE',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: { reason: 'invalid_credentials', method: 'password' },
+      });
+      throw new UnauthorizedException('Kimlik dogrulama basarisiz');
+    }
+
+    if (user.status !== 'ACTIVE') {
+      await this.audit.record({
+        orgId: org.id,
+        actorId: user.id,
+        actorEmail: user.email,
+        action: 'auth.login_failed',
+        resourceType: 'user',
+        resourceId: user.id,
+        outcome: 'DENIED',
+        ipAddress: context.ipAddress,
+        metadata: { reason: `status_${user.status.toLowerCase()}`, method: 'password' },
+      });
+      throw new ForbiddenException('Hesabiniz aktif degil');
+    }
+
+    const tokens = await this.issueTokenPair(user, context, null);
+
+    await this.db.query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]);
+
+    await this.audit.record({
+      orgId: org.id,
+      actorId: user.id,
+      actorEmail: user.email,
+      action: 'auth.login',
+      resourceType: 'user',
+      resourceId: user.id,
+      outcome: 'SUCCESS',
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      metadata: { method: 'password' },
     });
 
     return {
@@ -486,6 +622,15 @@ export class AuthService {
     return createHash('sha256').update(token).digest();
   }
 
+  private async loadUserByOrgEmail(orgId: string, email: string): Promise<UserAuthRecord | null> {
+    return this.db.queryMaybe<UserAuthRecord>(
+      `${USER_AUTH_QUERY}
+        WHERE u.org_id = $1 AND u.email = $2 AND u.deleted_at IS NULL
+        GROUP BY u.id`,
+      [orgId, email],
+    );
+  }
+
   private async loadUserByIdp(
     orgId: string,
     provider: string,
@@ -519,7 +664,7 @@ export class AuthService {
  * kendiliğinden sona ermelidir.
  */
 const USER_AUTH_QUERY = `
-  SELECT u.id, u.org_id, u.email, u.display_name, u.status, u.token_version,
+  SELECT u.id, u.org_id, u.email, u.display_name, u.status, u.token_version, u.password_hash,
          array_agg(DISTINCT r.key) FILTER (WHERE r.key IS NOT NULL) AS roles,
          array_agg(DISTINCT rp.permission_key) FILTER (WHERE rp.permission_key IS NOT NULL) AS permissions
     FROM users u

@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
+import { SetupModule } from './setup/setup.module';
 import { AuditModule } from './audit/audit.module';
 import { ChannelsModule } from './channels/channels.module';
 import { ChatModule } from './chat/chat.module';
@@ -129,6 +130,7 @@ const envSchema = z.object({
     CommonModule,
     AuditModule,
     AuthModule,
+    SetupModule,
     ChannelsModule,
     DlpModule,
     PresenceModule,

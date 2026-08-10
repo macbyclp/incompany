@@ -726,6 +726,20 @@ app.get('/api/v1/channels/:channelId/messages', async (req, res) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', mode: 'demo' }));
 
+/**
+ * Frontend'in bu bağlandığı sunucunun demo mu gerçek mi olduğunu ayırt
+ * etmesi için. GERÇEK NestJS sunucusunda bu uç nokta YOKTUR (404 döner);
+ * App.tsx bunu "gerçek kurulum" olarak yorumlar ve banner göstermez.
+ *
+ * Bu uç nokta, demo ile gerçek kurulumun birbirine karışmasını önleyen
+ * son savunma hattıdır: demo modunda çalışan biri, sahte "genel" kanalını
+ * ve önceden doldurulmuş kullanıcıları gördüğünde bunun gerçek, kalıcı bir
+ * kurulum olmadığını arayüzden AÇIKÇA görür.
+ */
+app.get('/api/v1/demo-info', (_req, res) => {
+  res.json({ isDemo: true });
+});
+
 // =============================================================================
 //  WebSocket
 // =============================================================================

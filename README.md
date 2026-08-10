@@ -11,6 +11,47 @@ Katkıda bulunmak için [CONTRIBUTING.md](CONTRIBUTING.md), güvenlik açığı 
 
 ---
 
+## Gerçek kurulum ≠ demo
+
+Bu ayrım önemlidir, karıştırılmamalıdır:
+
+| | **Gerçek kurulum** (`docker compose up` veya üretim) | **Demo modu** (`npm run demo`) |
+|---|---|---|
+| Depolama | PostgreSQL + Redis (kalıcı) | Bellek içi (süreç kapanınca silinir) |
+| İlk açılış | **Sıfır** kanal, sıfır kullanıcı — [kurulum sihirbazı](#kurulum-sihirbazı) organizasyonu ve ilk yöneticiyi oluşturur | Önceden doldurulmuş sahte kullanıcılar ve mesajlarla açılır |
+| Arayüzde işaret | Yok — normal bir uygulama gibi çalışır | **Kalıcı turuncu banner**: "🧪 DEMO MODU — bu gerçek bir kurulum değildir" |
+| Amaç | Üretim / gerçek kullanım | Docker kurmadan kodu ve DLP/kripto motorunu denemek |
+
+Demo modunun kalıcı bir banner'ı vardır ve kapatılamaz — amacı tam olarak,
+demo veriyle oynayan birinin bunu gerçek bir kurulumla karıştırmasını
+imkânsız kılmaktır.
+
+## Kurulum Sihirbazı
+
+Gerçek kurulumda (Docker Compose veya üretim) sistem **tamamen boş** açılır.
+Veritabanında hiçbir organizasyon yokken uygulama otomatik olarak bir
+kurulum ekranı gösterir:
+
+1. Organizasyon adı girilir (adres/slug otomatik türetilir)
+2. İlk yönetici hesabı oluşturulur (ad, e-posta, parola)
+3. Sihirbaz tamamlandığında bu hesapla otomatik oturum açılır — sıfır
+   kanal, sıfır sahte kullanıcı, sıfır demo mesajı
+
+Bu uç nokta **tek seferliktir**: bir organizasyon oluşturulduktan sonra
+sunucu tarafında kalıcı olarak kilitlenir (`SetupService.bootstrap`),
+eşzamanlı çift kurulum girişimlerine karşı bloklayan bir veritabanı kilidi
+(`pg_advisory_xact_lock`) ile korunur.
+
+**Kimlik doğrulama:** İlk yönetici hesabı parola ile giriş yapar (kurumsal
+SSO henüz yapılandırılmamış olabilir — tavuk-yumurta sorunu). SSO'yu
+kurumsal IdP'nize (Azure AD / Okta) bağlamak isterseniz Ayarlar → Güvenlik'e
+bakın; parola hesabı SSO kurulduktan sonra da çalışmaya devam eder. Parola
+karması Node.js'in yerleşik `scrypt`'i ile alınır — argon2/bcrypt gibi
+native derleme gerektiren paketler bilinçli olarak tercih edilmedi (bkz.
+[`password.util.ts`](backend/src/auth/password.util.ts)).
+
+---
+
 ## Durum
 
 Tüm workspace **derleniyor ve testleri geçiyor**:

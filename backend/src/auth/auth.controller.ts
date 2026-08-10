@@ -14,7 +14,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { IsString, IsOptional, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsEmail, MaxLength, Matches } from 'class-validator';
 
 import { AuthService } from './auth.service';
 import { SsoService } from './sso/sso.service';
@@ -27,6 +27,22 @@ class RefreshDto {
   @IsString()
   @MaxLength(4096)
   refreshToken?: string;
+}
+
+class LoginDto {
+  // Aynı format kısıtı organizations.slug CHECK kısıtıyla eşleşir —
+  // burada erken reddetmek, geçersiz bir slug'ın veritabanına kadar
+  // gitmesini önler.
+  @Matches(/^[a-z0-9][a-z0-9-]{1,62}$/u, { message: 'Gecersiz organizasyon adresi' })
+  orgSlug!: string;
+
+  @IsEmail()
+  @MaxLength(255)
+  email!: string;
+
+  @IsString()
+  @MaxLength(200)
+  password!: string;
 }
 
 /**
@@ -103,6 +119,47 @@ export class AuthController {
     // geçmişine yazılır. Kısa ömürlü bir devir (handoff) kodu kullanılır;
     // SPA bunu /auth/exchange ile gerçek token'a çevirir.
     res.redirect(`${identity.returnTo}#auth=ok`);
+  }
+
+  // -------------------------------------------------------------------------
+  //  Parola ile giriş
+  // -------------------------------------------------------------------------
+
+  /**
+   * Parola ile giriş — kurulum sihirbazının oluşturduğu ilk yönetici ve
+   * SSO yapılandırılmamış/istenmeyen dağıtımlar için.
+   *
+   * FAIL-CLOSED sınır: giriş denemeleri kaba kuvvete en açık uç noktadır.
+   * Redis erişilemezse istek REDDEDİLİR, `consume` (fail-open) DEĞİL
+   * `consumeStrict` kullanılır — bkz. RateLimiterService.
+   */
+  @Public()
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ accessToken: string; expiresAt: number }> {
+    const limited = await this.rateLimiter.consumeStrict(
+      `login:${req.ip}:${dto.email.toLowerCase()}`,
+      RATE_LIMITS.LOGIN,
+    );
+    if (!limited.ok) {
+      throw new UnauthorizedException(
+        `Cok fazla basarisiz deneme. ${limited.retryAfterSec} sn sonra tekrar deneyin.`,
+      );
+    }
+
+    const result = await this.auth.loginWithPassword(dto.orgSlug, dto.email, dto.password, {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      deviceLabel: this.deviceLabel(req.headers['user-agent']),
+    });
+
+    this.setRefreshCookie(res, result.refreshToken, result.refreshExpiresAt);
+
+    return { accessToken: result.accessToken, expiresAt: result.accessExpiresAt };
   }
 
   // -------------------------------------------------------------------------

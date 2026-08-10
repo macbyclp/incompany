@@ -3,6 +3,28 @@
 Bu proje [Semantic Versioning](https://semver.org/lang/tr/) kullanır.
 Biçim [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/) temel alınmıştır.
 
+## [Yayınlanmamış]
+
+### Eklenenler
+
+- **Kurulum sihirbazı**: gerçek bir dağıtım artık tamamen boş başlar (sıfır
+  kanal, sıfır kullanıcı). `organizations` tablosu boşken uygulama otomatik
+  olarak organizasyon + ilk yönetici hesabı oluşturma ekranı gösterir
+  (`SetupService`, `SetupController`, tek-seferlik veritabanı kilidiyle
+  korunur — bkz. `pg_advisory_xact_lock`).
+- **Parola ile giriş**: SSO'yu henüz yapılandıramayan ilk yönetici için
+  (ve isteğe bağlı diğer yerel hesaplar için) `AuthService.loginWithPassword`.
+  Node.js'in yerleşik `scrypt`'i ile karma alınır — native bağımlılık yok.
+- **Demo/gerçek kurulum ayrımı arayüzde görünür kılındı**: demo modunda
+  (`npm run demo`) kalıcı, kapatılamaz bir banner gösterilir.
+
+### Düzeltilen hatalar
+
+- App.tsx'te kurulum-durumu sorgusu ile oturum-açma denemesi aynı
+  `try/catch` bloğunda birleşikti; kurulum sorgusu başarısız olduğunda
+  (eski sunucu, ağ hatası) geçerli bir refresh çerezi olan kullanıcı bile
+  giriş ekranına düşüyordu. İki adım bağımsız hata yönetimine ayrıldı.
+
 ## [0.1.0] — İlk açık kaynak yayını
 
 ### Eklenenler
