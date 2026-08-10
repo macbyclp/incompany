@@ -1,0 +1,29 @@
+# =============================================================================
+#  Satır sonu normalizasyonu.
+#
+#  Bu depo Windows'ta yazıldı (CRLF varsayılan) ama katkıcıların çoğu Linux/
+#  macOS kullanır (LF). `.gitattributes` olmadan, aynı dosyanın farklı
+#  işletim sistemlerinde düzenlenmesi her satırı "değişmiş" gösteren dev
+#  diff'ler üretir ve gerçek değişikliği gürültüye gömer.
+# =============================================================================
+
+* text=auto eol=lf
+
+# İkili dosyalar — satır sonu dönüşümü UYGULANMAZ. Uygulanırsa dosya bozulur.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Windows betikleri CRLF ister — bazı eski `cmd.exe` yorumlayıcıları LF'yi
+# reddeder.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# GitHub dil istatistiklerini bozmasın — üretilen/vendored kod olarak işaretlenir.
+package-lock.json linguist-generated=true
+frontend/dist/** linguist-generated=true
+backend/dist/** linguist-generated=true

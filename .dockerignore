@@ -1,0 +1,47 @@
+# =============================================================================
+#  Derleme bağlamından dışlananlar.
+#
+#  İKİ NEDEN — biri performans, diğeri güvenlik:
+#
+#  1) BAĞLAM BOYUTU: `node_modules` bağlama dahil edilirse yüzbinlerce
+#     dosya Docker daemon'a gönderilir. Derleme dakikalarca uzar ve
+#     host'un (Windows/macOS) ikili dosyaları Linux imajını bozar.
+#
+#  2) SIR SIZINTISI: bağlama giren her dosya bir imaj katmanına yazılabilir.
+#     `.env` yanlışlıkla `COPY . .` ile kopyalanırsa, sır imaj geçmişinde
+#     KALICI olarak durur — sonraki bir katmanda silinse bile
+#     `docker history` ile çıkarılabilir.
+# =============================================================================
+
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.tsbuildinfo
+
+# --- Sırlar ---
+.env
+.env.*
+!.env.example
+**/*.pem
+**/*.key
+secrets/
+
+# --- Sürüm kontrolü ve CI ---
+.git
+.github
+.gitignore
+
+# --- Geliştirme dosyaları ---
+**/.vscode
+**/.idea
+**/*.log
+**/.eslintcache
+docker-compose*.yml
+**/Dockerfile
+.dockerignore
+
+# --- Dokümantasyon (imajda gereksiz yer kaplar) ---
+docs/
+*.md
+!README.md

@@ -1,0 +1,72 @@
+# =============================================================================
+#  iNCompany
+# =============================================================================
+
+# --- SIRLAR — ASLA COMMIT EDİLMEZ --------------------------------------------
+#
+# Bu bölüm dosyanın EN ÜSTÜNDEDİR ve öyle kalmalıdır. Aşağıdaki
+# desenlerden biri yanlışlıkla kaldırılırsa, bir sonraki commit üretim
+# kimlik bilgilerini depo geçmişine kalıcı olarak yazar — ve git
+# geçmişinden sır silmek, deponun tüm kopyalarını yeniden yazmayı gerektirir.
+#
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+secrets/
+credentials.json
+.aws/
+.vault-token
+
+# --- Bağımlılıklar -----------------------------------------------------------
+node_modules/
+.pnp.*
+.yarn/
+
+# --- Derleme çıktıları -------------------------------------------------------
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# --- Test ve kapsam ----------------------------------------------------------
+coverage/
+.nyc_output/
+*.lcov
+
+# --- Loglar ------------------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# --- Yerel veri --------------------------------------------------------------
+# Docker birim (volume) verisi ve yerel veritabanı dökümleri.
+# Bir üretim dökümü buraya konursa gerçek kullanıcı verisi commit edilir.
+data/
+*.dump
+*.sql.gz
+!db/postgres/*.sql
+!db/scylla/*.cql
+
+# --- Editör ------------------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
+*.swp
+*.swo
+
+# --- İşletim sistemi ---------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Geçici ------------------------------------------------------------------
+tmp/
+.cache/
+.eslintcache

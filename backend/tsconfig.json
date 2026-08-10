@@ -1,0 +1,68 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "moduleResolution": "node",
+
+    "declaration": false,
+    "removeComments": false,
+    "sourceMap": true,
+
+    // `rootDir` AÇIKÇA belirtilir. Belirtilmezse TypeScript ortak kök
+    // dizini derlenen dosyalardan çıkarır; workspace dışından tek bir
+    // dosya bile dahil edilse çıktı `dist/backend/src/main.js` haline gelir
+    // ve `CMD ["dist/main.js"]` sessizce kırılır.
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+
+    // NestJS dekoratörleri ve DI için zorunlu.
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+
+    // --- Tip katılığı ---
+    // Bu ayarların hepsi bilinçlidir. Gevşetmek, TypeScript kullanmanın
+    // asıl faydasını kaybettirir: hataları çalışma zamanından derleme
+    // zamanına taşımak.
+    "strict": true,
+    "strictNullChecks": true,
+    "strictBindCallApply": true,
+    "strictFunctionTypes": true,
+    "strictPropertyInitialization": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+
+    // Dizi ve nesne erişimlerine `| undefined` ekler. Katıdır ama
+    // `arr[0].foo` gibi sessiz çökme kaynaklarını derleme zamanında yakalar.
+    "noUncheckedIndexedAccess": false,
+
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    // `@incompany/contracts` için yol eşlemesi YOK — npm workspace
+    // sembolik bağı sayesinde normal bir bağımlılık gibi çözülür.
+    // Eşleme eklenirse kaynak dosya yeniden derlemeye dahil olur ve
+    // yukarıdaki rootDir sorunu geri döner.
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  // DERLEME yapılandırması: yalnızca `src`.
+  //
+  // Testler BİLİNÇLİ OLARAK dışarıdadır — `rootDir: ./src` ile birlikte
+  // olamazlar ve üretim çıktısına test kodu girmemelidir zaten.
+  // Testlerin tipleri `tsconfig.test.json` ile denetlenir (bkz. `npm run typecheck`).
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
+}

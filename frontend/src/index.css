@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Global stiller.
+ *
+ * Buradaki her kural bir ERİŞİLEBİLİRLİK veya KULLANILABİLİRLİK sorununu
+ * çözer — estetik tercih değildir.
+ */
+
+@layer base {
+  html {
+    /* Sohbet uygulamasında otomatik kaydırma davranışı istenmez:
+       yeni mesajda yumuşak kaydırma, hızlı akan bir kanalda arayüzü
+       sürekli hareket halinde bırakır ve okumayı imkânsızlaştırır. */
+    scroll-behavior: auto;
+  }
+
+  /* Klavye kullanıcıları için görünür odak halkası.
+     `outline: none` yazmak, klavyeyle gezinen kullanıcıların nerede
+     olduklarını göremez hale gelmesine yol açar — en yaygın erişilebilirlik
+     hatasıdır. `:focus-visible` fare tıklamalarında halkayı göstermez. */
+  :focus-visible {
+    outline: 2px solid theme('colors.blue.500');
+    outline-offset: 2px;
+  }
+
+  /* Hareketi azaltma tercihi. İşletim sisteminde bu ayarı açan
+     kullanıcılarda animasyon, baş dönmesi ve mide bulantısına yol açabilir.
+     Tercihi yok saymak bir erişilebilirlik ihlalidir. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* Uzun URL ve kod parçaları balonu taşırmasın. */
+  .prose {
+    overflow-wrap: anywhere;
+  }
+
+  /* Kod bloğu yatay kaydırılabilir olmalı — sarmalanmış kod okunmaz. */
+  .prose pre {
+    overflow-x: auto;
+  }
+}
+
+@layer utilities {
+  /* Ekran okuyucuya görünür, gözle görünmez. Atlama bağlantıları ve
+     yalnızca sesli okunması gereken etiketler için. */
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}
