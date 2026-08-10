@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { Uuid } from '@incompany/contracts';
 
+import { apiFetch } from '../lib/api-client';
+
 /**
  * Kullanıcı Dizini.
  *
@@ -75,10 +77,9 @@ async function flushBatch(): Promise<void> {
     for (let offset = 0; offset < ids.length; offset += 200) {
       const chunk = ids.slice(offset, offset + 200);
 
-      const response = await fetch('/api/v1/users/resolve', {
+      const response = await apiFetch('/api/v1/users/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ userIds: chunk }),
       });
 

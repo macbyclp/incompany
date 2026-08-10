@@ -5,6 +5,7 @@ import { Modal } from './ui/Modal';
 import { Button, Field, TextInput, SelectInput, Toggle } from './ui/Form';
 import { Avatar } from './Avatar';
 import { useAuth } from '../store/auth.store';
+import { apiFetch } from '../lib/api-client';
 
 /**
  * Yeni Sohbet Diyaloğu.
@@ -117,10 +118,9 @@ function ChannelForm({
     setSaving(true);
     setErrors({});
     try {
-      const response = await fetch('/api/v1/channels', {
+      const response = await apiFetch('/api/v1/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           type,
           name: name.trim(),
@@ -258,7 +258,7 @@ function DmPicker({
   useEffect(() => {
     void (async () => {
       try {
-        const response = await fetch('/api/v1/users', { credentials: 'include' });
+        const response = await apiFetch('/api/v1/users');
         if (response.ok) {
           const data = (await response.json()) as { users: DirectoryUser[] };
           // Kendini listede gösterme — kendinle DM açılamaz.
@@ -283,9 +283,8 @@ function DmPicker({
   const openDm = async (userId: Uuid): Promise<void> => {
     setOpening(userId);
     try {
-      const response = await fetch(`/api/v1/channels/dm/${userId}`, {
+      const response = await apiFetch(`/api/v1/channels/dm/${userId}`, {
         method: 'POST',
-        credentials: 'include',
       });
       if (!response.ok) throw new Error('DM açılamadı');
       const channel = (await response.json()) as { id: Uuid };

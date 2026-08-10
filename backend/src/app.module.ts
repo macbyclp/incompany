@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
 import { SetupModule } from './setup/setup.module';
+import { UsersModule } from './users/users.module';
 import { AuditModule } from './audit/audit.module';
 import { ChannelsModule } from './channels/channels.module';
 import { ChatModule } from './chat/chat.module';
@@ -131,6 +132,7 @@ const envSchema = z.object({
     AuditModule,
     AuthModule,
     SetupModule,
+    UsersModule,
     ChannelsModule,
     DlpModule,
     PresenceModule,
@@ -153,8 +155,8 @@ const envSchema = z.object({
      * yapar: yeni bir controller yazan geliştirici guard eklemeyi unutursa
      * uç nokta korumasız kalmaz — erişilemez olur.
      */
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
-    { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useExisting: JwtAuthGuard },
+    { provide: APP_GUARD, useExisting: RolesGuard },
   ],
 })
 export class AppModule {}

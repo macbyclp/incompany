@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { ChannelType, type Uuid } from '@incompany/contracts';
 
 import { useDirectoryStore } from './directory.store';
+import { apiFetch } from '../lib/api-client';
 
 /**
  * Kanal Listesi Deposu.
@@ -96,7 +97,7 @@ export function channelDisplayName(
  */
 export async function refreshChannels(): Promise<void> {
   try {
-    const response = await fetch('/api/v1/channels', { credentials: 'include' });
+    const response = await apiFetch('/api/v1/channels');
     if (!response.ok) return;
 
     const data = (await response.json()) as { channels: ChannelSummary[] };

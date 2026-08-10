@@ -95,9 +95,18 @@ export class ChannelService {
   async openDm(user: AuthenticatedUser, targetUserId: string): Promise<ChannelRecord> {
     // Hedef kullanıcı AYNI organizasyonda olmalıdır. Bu kontrol olmadan,
     // bir kullanıcı kimliği tahmin ederek başka bir kiracıya DM açabilir.
-    const target = await this.db.queryMaybe<{ id: string }>(
-      `SELECT id FROM users WHERE id = $1 AND org_id = $2 AND status = 'ACTIVE' AND deleted_at IS NULL`,
-      [targetUserId, user.orgId],
+    // `users` RLS'lidir (`tenant_isolation_users`) — `withTenant` olmadan
+    // `app.current_org` bu bağlantıda hiç ayarlanmamışsa politika ifadesi
+    // (`current_setting(...)::uuid`) boş dizeyi uuid'ye çevirmeye çalışır
+    // ve HATA fırlatır (`invalid input syntax for type uuid`) — DM açma
+    // her zaman 500 ile başarısız oluyordu, kök neden buydu.
+    const target = await this.db.withTenant(user.orgId, (client) =>
+      client
+        .query<{ id: string }>(
+          `SELECT id FROM users WHERE id = $1 AND org_id = $2 AND status = 'ACTIVE' AND deleted_at IS NULL`,
+          [targetUserId, user.orgId],
+        )
+        .then((r) => r.rows[0] ?? null),
     );
     if (!target) throw new ForbiddenException('Kullanici bulunamadi');
 
@@ -120,7 +129,7 @@ export class ChannelService {
     if (!membership || membership.leftAt) {
       throw new ForbiddenException('Bu kanalin uyesi degilsiniz');
     }
-    return this.channels.listMembersWithProfile(channelId);
+    return this.channels.listMembersWithProfile(channelId, user.orgId);
   }
 
   async addMembers(

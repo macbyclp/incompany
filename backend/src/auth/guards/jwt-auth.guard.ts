@@ -118,7 +118,7 @@ export class JwtAuthGuard implements CanActivate {
 
     // Toplu iptal: kullanıcı askıya alındı, rolü değişti veya parolası değişti.
     // Önbelleklenmiş kayıt (30 sn TTL) — DB'ye her istekte gidilmez.
-    const security = await this.userCache.get(payload.sub);
+    const security = await this.userCache.get(payload.org, payload.sub);
     if (!security) {
       throw new UnauthorizedException({ code: 'USER_NOT_FOUND', message: 'Kullanici bulunamadi' });
     }

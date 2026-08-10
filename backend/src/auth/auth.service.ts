@@ -171,7 +171,11 @@ export class AuthService {
 
     const tokens = await this.issueTokenPair(user, context, null);
 
-    await this.db.query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]);
+    // RLS (`tenant_isolation_users`) UPDATE için de USING/CHECK uygular —
+    // `app.current_org` ayarlanmadan bu satır SESSİZCE 0 satır günceller.
+    await this.db.withTenant(orgId, (client) =>
+      client.query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]),
+    );
 
     await this.audit.record({
       orgId,
@@ -279,7 +283,9 @@ export class AuthService {
 
     const tokens = await this.issueTokenPair(user, context, null);
 
-    await this.db.query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]);
+    await this.db.withTenant(org.id, (client) =>
+      client.query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]),
+    );
 
     await this.audit.record({
       orgId: org.id,
@@ -352,7 +358,7 @@ export class AuthService {
       throw new UnauthorizedException('Yenileme token suresi doldu');
     }
 
-    const user = await this.loadUserById(session.user_id);
+    const user = await this.loadUserById(payload.org, session.user_id);
     if (!user || user.status !== 'ACTIVE') {
       throw new UnauthorizedException('Hesap aktif degil');
     }
@@ -398,7 +404,7 @@ export class AuthService {
 
     // Erişim token'larını da geçersiz kıl — refresh iptali tek başına
     // saldırganın elindeki 15 dakikalık erişim token'ını durdurmaz.
-    await this.userCache.bumpTokenVersion(userId);
+    await this.userCache.bumpTokenVersion(orgId, userId);
     await this.sessionRevoker?.(userId, 'TOKEN_REUSE_DETECTED');
 
     await this.audit.record({
@@ -452,7 +458,7 @@ export class AuthService {
       [userId, reason],
     );
 
-    await this.userCache.bumpTokenVersion(userId);
+    await this.userCache.bumpTokenVersion(orgId, userId);
     await this.sessionRevoker?.(userId, reason);
 
     await this.audit.record({
@@ -622,13 +628,27 @@ export class AuthService {
     return createHash('sha256').update(token).digest();
   }
 
+  /**
+   * `users` tablosu `tenant_isolation_users` RLS politikasıyla korunur
+   * (`USING (org_id = current_setting('app.current_org', true)::uuid)`).
+   * `WITH CHECK` ayrı tanımlanmadığından bu ifade SELECT için de geçerlidir:
+   * `app.current_org` ayarlanmadan sorgu hatasız ama SESSİZCE sıfır satır
+   * döner — bu üç yükleyici bu yüzden `withTenant` kullanır, düz `query`
+   * DEĞİL. Gerçek bir PostgreSQL'e karşı ilk kez çalıştırıldığında (bu
+   * commit öncesi) bu sessiz filtreleme "gecerli kullanicinin girisi
+   * calismiyor" şeklinde ortaya çıktı — hata fırlatmadığı için fark
+   * edilmesi diğer RLS bloklarından daha zordu.
+   */
   private async loadUserByOrgEmail(orgId: string, email: string): Promise<UserAuthRecord | null> {
-    return this.db.queryMaybe<UserAuthRecord>(
-      `${USER_AUTH_QUERY}
-        WHERE u.org_id = $1 AND u.email = $2 AND u.deleted_at IS NULL
-        GROUP BY u.id`,
-      [orgId, email],
-    );
+    return this.db.withTenant(orgId, async (client) => {
+      const result = await client.query<UserAuthRecord>(
+        `${USER_AUTH_QUERY}
+          WHERE u.org_id = $1 AND u.email = $2 AND u.deleted_at IS NULL
+          GROUP BY u.id`,
+        [orgId, email],
+      );
+      return result.rows[0] ?? null;
+    });
   }
 
   private async loadUserByIdp(
@@ -636,20 +656,26 @@ export class AuthService {
     provider: string,
     subject: string,
   ): Promise<UserAuthRecord | null> {
-    return this.db.queryMaybe<UserAuthRecord>(
-      `${USER_AUTH_QUERY}
-        WHERE u.org_id = $1 AND u.idp_provider = $2 AND u.idp_subject = $3
-          AND u.deleted_at IS NULL
-        GROUP BY u.id`,
-      [orgId, provider, subject],
-    );
+    return this.db.withTenant(orgId, async (client) => {
+      const result = await client.query<UserAuthRecord>(
+        `${USER_AUTH_QUERY}
+          WHERE u.org_id = $1 AND u.idp_provider = $2 AND u.idp_subject = $3
+            AND u.deleted_at IS NULL
+          GROUP BY u.id`,
+        [orgId, provider, subject],
+      );
+      return result.rows[0] ?? null;
+    });
   }
 
-  private async loadUserById(userId: string): Promise<UserAuthRecord | null> {
-    return this.db.queryMaybe<UserAuthRecord>(
-      `${USER_AUTH_QUERY} WHERE u.id = $1 AND u.deleted_at IS NULL GROUP BY u.id`,
-      [userId],
-    );
+  private async loadUserById(orgId: string, userId: string): Promise<UserAuthRecord | null> {
+    return this.db.withTenant(orgId, async (client) => {
+      const result = await client.query<UserAuthRecord>(
+        `${USER_AUTH_QUERY} WHERE u.id = $1 AND u.deleted_at IS NULL GROUP BY u.id`,
+        [userId],
+      );
+      return result.rows[0] ?? null;
+    });
   }
 }
 
@@ -663,10 +689,18 @@ export class AuthService {
  * Süresi dolmuş rol atamaları (`expires_at`) dışlanır — geçici yükseltmeler
  * kendiliğinden sona ermelidir.
  */
+// `roles.key` ve `role_permissions.permission_key` `citext` tipindedir
+// (büyük/küçük harf duyarsız karşılaştırma için — bkz. 001_schema.sql).
+// `citext[]`'in OID'si `node-postgres`'in yerleşik tip ayrıştırıcısında
+// KAYITLI DEĞİLDİR: `::text[]` cast'i olmadan sürücü bu sütunu ayrıştırılmış
+// bir JS dizisi değil, PostgreSQL'in ham '{ADMIN}' metin gösterimini
+// döndürür. Bu, gerçek bir PostgreSQL'e karşı ilk kez çalıştırıldığında
+// (giriş başarılı ama JWT'deki `roles` bir dizi değil ham dize olduğu için
+// her sonraki istek "Token yapisi bozuk" ile reddedildi) ortaya çıktı.
 const USER_AUTH_QUERY = `
   SELECT u.id, u.org_id, u.email, u.display_name, u.status, u.token_version, u.password_hash,
-         array_agg(DISTINCT r.key) FILTER (WHERE r.key IS NOT NULL) AS roles,
-         array_agg(DISTINCT rp.permission_key) FILTER (WHERE rp.permission_key IS NOT NULL) AS permissions
+         array_agg(DISTINCT r.key::text) FILTER (WHERE r.key IS NOT NULL) AS roles,
+         array_agg(DISTINCT rp.permission_key::text) FILTER (WHERE rp.permission_key IS NOT NULL) AS permissions
     FROM users u
     LEFT JOIN user_roles ur
            ON ur.user_id = u.id

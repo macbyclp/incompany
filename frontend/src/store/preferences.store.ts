@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+import { apiFetch } from '../lib/api-client';
+
 /**
  * Kullanıcı Tercihleri.
  *
@@ -105,10 +107,9 @@ export const usePreferences = create<PreferencesState>()(
  */
 async function pushToServer(patch: Partial<Preferences>): Promise<void> {
   try {
-    await fetch('/api/v1/users/me/preferences', {
+    await apiFetch('/api/v1/users/me/preferences', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(patch),
     });
   } catch {

@@ -9,6 +9,7 @@ import { Avatar } from './Avatar';
 import { SettingsDialog } from './settings/SettingsDialog';
 import { AdminDialog } from './admin/AdminDialog';
 import { NewConversationDialog } from './NewConversationDialog';
+import { apiFetch } from '../lib/api-client';
 
 /**
  * Kanal Kenar Çubuğu.
@@ -51,7 +52,7 @@ export function ChannelSidebar({ activeChannelId, onSelectChannel }: ChannelSide
     void (async () => {
       const store = useChannelListStore.getState();
       try {
-        const response = await fetch('/api/v1/channels', { credentials: 'include' });
+        const response = await apiFetch('/api/v1/channels');
         if (!response.ok) throw new Error(`Kanallar yüklenemedi (${response.status})`);
 
         const data = (await response.json()) as { channels: ChannelSummary[] };

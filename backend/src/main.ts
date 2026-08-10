@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import Redis from 'ioredis';
+import type { Server as SocketIOServer } from 'socket.io';
 
 import { AppModule } from './app.module';
 import { ChatGateway } from './chat/chat.gateway';
@@ -134,8 +135,19 @@ async function bootstrap(): Promise<void> {
 
   pubClient.on('error', (error) => logger.error({ err: error.message }, 'Redis hatasi'));
 
+  // `gateway.server` (Socket.IO sunucusu), HTTP sunucusu gerçekten dinlemeye
+  // BAŞLAMADAN önce `app.init()` ile kurulur — `app.listen()` bunu zaten
+  // içerir ama o zamana kadar bağlantı kabul etmeye de başlar. Adapter'ı
+  // trafik başlamadan önce takabilmek için önce yalnızca `init()` çağrılır.
+  await app.init();
   const gateway = app.get(ChatGateway);
-  gateway.server.adapter(
+  // `ChatGateway`, `@WebSocketGateway({ namespace: '/ws' })` ile tanımlı —
+  // bu durumda `@WebSocketServer()` kök `Server`'ı DEĞİL, o namespace'e ait
+  // `Namespace` nesnesini enjekte eder. `.adapter()` yalnızca kök sunucuda
+  // vardır (Namespace'de yok); `Namespace.server` bu kök sunucuya işaret
+  // eden genel (public) bir alandır — socket.io'nun kendi API'sinin parçası.
+  const rootServer = (gateway.server as unknown as { server: SocketIOServer }).server;
+  rootServer.adapter(
     // Klasik Pub/Sub DEĞİL Streams: pub/sub ateşle-unut'tur ve bir düğüm
     // kısa süre kopsa o aralıktaki mesajları kalıcı olarak kaçırır.
     // Streams, son okunan ID'den devam eder.

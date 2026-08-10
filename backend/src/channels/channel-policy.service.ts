@@ -49,7 +49,7 @@ export class ChannelPolicyService {
    * Sıralama bilinçlidir: en ucuz ve en kesin kontrol önce.
    */
   async canPost(user: AuthenticatedUser, channelId: string): Promise<PolicyDecision> {
-    const channel = await this.channels.findById(channelId);
+    const channel = await this.channels.findById(channelId, user.orgId);
 
     if (!channel) {
       return this.deny(PolicyDenyCode.CHANNEL_NOT_FOUND, 'Kanal bulunamadi');
@@ -101,7 +101,7 @@ export class ChannelPolicyService {
 
   /** "Bu kullanıcı bu kanalı okuyabilir mi?" — arşivlenmiş kanallar okunabilir. */
   async canRead(user: AuthenticatedUser, channelId: string): Promise<PolicyDecision> {
-    const channel = await this.channels.findById(channelId);
+    const channel = await this.channels.findById(channelId, user.orgId);
 
     if (!channel || channel.orgId !== user.orgId) {
       return this.deny(PolicyDenyCode.CHANNEL_NOT_FOUND, 'Kanal bulunamadi');

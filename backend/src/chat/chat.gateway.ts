@@ -9,7 +9,7 @@ import {
   type OnGatewayInit,
 } from '@nestjs/websockets';
 import { Logger, UseFilters, UsePipes, ValidationPipe } from '@nestjs/common';
-import { Server, Socket } from 'socket.io';
+import { Namespace, Socket } from 'socket.io';
 import { randomUUID } from 'node:crypto';
 import {
   WsErrorCode,
@@ -75,8 +75,13 @@ import type { AuthenticatedUser } from '../auth/auth.types';
 export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(ChatGateway.name);
 
+  // `@WebSocketGateway({ namespace: '/ws' })` kullanıldığından, Nest bu alana
+  // kök `Server`'ı DEĞİL, o namespace'e ait `Namespace` nesnesini enjekte
+  // eder. Tip burada gerçek çalışma zamanı şeklini yansıtır — aksi halde
+  // `.sockets`/`.adapter` gibi erişimler (Server'da bir katman daha derin
+  // olan) derleyicide sessizce yanlış tipte görünür.
   @WebSocketServer()
-  server!: Server<ClientToServerEvents, ServerToClientEvents>;
+  server!: Namespace<ClientToServerEvents, ServerToClientEvents>;
 
   /** Kullanıcı başına eşzamanlı cihaz sınırı. */
   private static readonly MAX_SOCKETS_PER_USER = 8;
@@ -539,7 +544,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ): Promise<Ack<EmptyPayload>> {
     const user = client.data.user as AuthenticatedUser;
 
-    await this.presence.setManualStatus(user.id, {
+    await this.presence.setManualStatus(user.orgId, user.id, {
       status: dto.status,
       customText: dto.customText ? sanitizePlainText(dto.customText, 120) : undefined,
       customEmoji: dto.customEmoji,
@@ -579,12 +584,15 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     seq: number,
   ): Promise<void> {
     try {
-      const room = this.server.sockets.adapter.rooms.get(`c:${channelId}`);
+      // `this.server` bir `Namespace`'tir (bkz. evictExpiredTokens yorumu):
+      // `.adapter` ve `.sockets` doğrudan Namespace üzerindedir, ikinci bir
+      // `.sockets` katmanı YOKTUR.
+      const room = this.server.adapter.rooms.get(`c:${channelId}`);
       const activeUserIds = new Set<string>();
 
       if (room) {
         for (const socketId of room) {
-          const socket = this.server.sockets.sockets.get(socketId);
+          const socket = this.server.sockets.get(socketId);
           const uid = socket?.data?.user?.id;
           if (uid) activeUserIds.add(uid);
         }
@@ -640,7 +648,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const now = Date.now();
     let evicted = 0;
 
-    for (const socket of this.server.sockets.sockets.values()) {
+    // `this.server`, `@WebSocketGateway({ namespace: '/ws' })` nedeniyle bir
+    // `Namespace` nesnesidir (kök `Server` değil) — `Namespace.sockets` zaten
+    // o namespace'teki socket'lerin Map'idir, ikinci bir `.sockets` YOKTUR.
+    for (const socket of this.server.sockets.values()) {
       const auth = socket.data?.auth as SocketAuthContext | undefined;
       if (auth && auth.expiresAt <= now) {
         socket.emit('session:revoked', { reason: 'TOKEN_EXPIRED' });

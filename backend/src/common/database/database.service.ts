@@ -1,7 +1,6 @@
 import {
   Injectable,
   Logger,
-  OnModuleInit,
   OnModuleDestroy,
   ConflictException,
   NotFoundException,
@@ -27,13 +26,23 @@ import { Pool, type PoolClient, type QueryResultRow } from 'pg';
  *   Bu yüzden yalnızca `SET LOCAL` — transaction bitince otomatik düşer.
  */
 @Injectable()
-export class DatabaseService implements OnModuleInit, OnModuleDestroy {
+export class DatabaseService implements OnModuleDestroy {
   private readonly logger = new Logger(DatabaseService.name);
-  private pool!: Pool;
+  private readonly pool: Pool;
 
-  constructor(private readonly config: ConfigService) {}
-
-  onModuleInit(): void {
+  /**
+   * Havuz burada, `onModuleInit` yerine constructor'da kurulur.
+   *
+   * NEDEN? `CommonModule` `@Global()` olduğu için, DatabaseService'in
+   * `onModuleInit`'inin diğer modüllerin (ör. DlpService) `onModuleInit`'inden
+   * ÖNCE çalışacağı garanti değildir — Nest'in modül başlatma sırası global
+   * modüller için belgelenmemiş bir iç detaydır. Gerçek bir çalıştırmada
+   * `DlpService.onModuleInit` → `DatabaseService.query` → `this.pool`
+   * `undefined` hatasıyla karşılaşıldı (bkz. günlük). `pg.Pool` yapıcısı
+   * bağlantıyı hemen açmaz (tembel/lazy) — bu yüzden constructor'da
+   * oluşturmak güvenlidir ve sıralama sorununu tamamen ortadan kaldırır.
+   */
+  constructor(private readonly config: ConfigService) {
     this.pool = new Pool({
       connectionString: this.config.getOrThrow<string>('DATABASE_URL'),
       // Havuz boyutu = (replika sayısı × max) < PostgreSQL max_connections.

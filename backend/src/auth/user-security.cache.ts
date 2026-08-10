@@ -45,7 +45,14 @@ export class UserSecurityCache {
     private readonly redis: RedisService,
   ) {}
 
-  async get(userId: string): Promise<UserSecurityRecord | null> {
+  /**
+   * `orgId`, JWT'nin (`payload.org`) doğrulanmış alanından gelir — `users`
+   * tablosundaki `tenant_isolation_users` RLS politikası için gereklidir
+   * (bkz. `loadFromDb`). Önbellek anahtarı yine yalnızca `userId`'dir:
+   * `userId` zaten global olarak benzersizdir (UUID), org'a göre ayrı
+   * anahtarlamaya gerek yoktur.
+   */
+  async get(orgId: string, userId: string): Promise<UserSecurityRecord | null> {
     const now = Date.now();
 
     // --- L1 ---
@@ -68,7 +75,7 @@ export class UserSecurityCache {
     }
 
     // --- Kaynak ---
-    const record = await this.loadFromDb(userId);
+    const record = await this.loadFromDb(orgId, userId);
 
     this.setL1(userId, record);
     try {
@@ -108,31 +115,47 @@ export class UserSecurityCache {
    * Token sürümünü artırır ve önbelleği temizler.
    * Kullanıcının dolaşımdaki TÜM erişim token'ları anında geçersizleşir.
    */
-  async bumpTokenVersion(userId: string): Promise<number> {
-    const result = await this.db.queryOne<{ token_version: number }>(
-      'UPDATE users SET token_version = token_version + 1 WHERE id = $1 RETURNING token_version',
-      [userId],
-      'Kullanici bulunamadi',
+  async bumpTokenVersion(orgId: string, userId: string): Promise<number> {
+    const result = await this.db.withTenant(orgId, (client) =>
+      client.query<{ token_version: number }>(
+        'UPDATE users SET token_version = token_version + 1 WHERE id = $1 RETURNING token_version',
+        [userId],
+      ),
     );
+    if (result.rowCount === 0) {
+      throw new Error('Kullanici bulunamadi');
+    }
 
     await this.invalidate(userId);
-    this.logger.log({ userId, tokenVersion: result.token_version }, 'Token surumu artirildi');
-    return result.token_version;
+    this.logger.log({ userId, tokenVersion: result.rows[0].token_version }, 'Token surumu artirildi');
+    return result.rows[0].token_version;
   }
 
-  private async loadFromDb(userId: string): Promise<UserSecurityRecord | null> {
-    const row = await this.db.queryMaybe<{
-      id: string;
-      org_id: string;
-      status: 'ACTIVE' | 'SUSPENDED' | 'DEPROVISIONED';
-      token_version: number;
-      email: string;
-    }>(
-      `SELECT id, org_id, status, token_version, email
-         FROM users
-        WHERE id = $1 AND deleted_at IS NULL`,
-      [userId],
-    );
+  /**
+   * `users` tablosundaki `tenant_isolation_users` RLS politikası yalnızca
+   * `USING` tanımlar (ayrı bir `WITH CHECK` yok) — PostgreSQL bu durumda
+   * aynı ifadeyi SELECT için de uygular. `app.current_org` ayarlanmadan bu
+   * sorgu HATA VERMEZ, sessizce sıfır satır döner; `JwtAuthGuard` da bunu
+   * "kullanıcı yok" sanıp her isteği 401 ile reddeder — gerçek bir
+   * PostgreSQL'e karşı ilk kez çalıştırıldığında (login sonrası `/auth/me`
+   * 401 dönerek) ortaya çıkan hata buydu.
+   */
+  private async loadFromDb(orgId: string, userId: string): Promise<UserSecurityRecord | null> {
+    const row = await this.db.withTenant(orgId, async (client) => {
+      const result = await client.query<{
+        id: string;
+        org_id: string;
+        status: 'ACTIVE' | 'SUSPENDED' | 'DEPROVISIONED';
+        token_version: number;
+        email: string;
+      }>(
+        `SELECT id, org_id, status, token_version, email
+           FROM users
+          WHERE id = $1 AND deleted_at IS NULL`,
+        [userId],
+      );
+      return result.rows[0] ?? null;
+    });
 
     if (!row) return null;
 

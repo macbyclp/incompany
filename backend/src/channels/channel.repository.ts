@@ -39,6 +39,8 @@ export interface ChannelOverview extends ChannelRecord {
   lastReadSeq: number;
   isPinned: boolean;
   isMuted: boolean;
+  /** Yalnızca DM kanallarında dolu — karşı tarafın kullanıcı kimliği. */
+  peerUserId?: string;
 }
 
 interface RawChannel {
@@ -71,12 +73,23 @@ export class ChannelRepository {
   //  Okuma
   // -------------------------------------------------------------------------
 
-  async findById(channelId: string): Promise<ChannelRecord | null> {
-    const raw = await this.db.queryMaybe<RawChannel>(
-      `SELECT id, org_id, type, visibility, name, slug, topic, department_id,
-              last_seq, e2ee_enabled, retention_id, archived_at, created_by, created_at
-         FROM channels WHERE id = $1`,
-      [channelId],
+  /**
+   * `channels` tablosu RLS'lidir (`tenant_isolation_channels`) — `orgId`
+   * `withTenant`'a verilir. Bu aynı zamanda kiracılar arası erişimi de
+   * doğal olarak engeller: başka bir org'un kanal ID'si verilirse RLS
+   * satırı gizler ve `null` döner — çağıranların ayrıca `channel.orgId`
+   * karşılaştırması yapmasına gerek kalmaz (yine de savunma amaçlı durur).
+   */
+  async findById(channelId: string, orgId: string): Promise<ChannelRecord | null> {
+    const raw = await this.db.withTenant(orgId, (client) =>
+      client
+        .query<RawChannel>(
+          `SELECT id, org_id, type, visibility, name, slug, topic, department_id,
+                  last_seq, e2ee_enabled, retention_id, archived_at, created_by, created_at
+             FROM channels WHERE id = $1`,
+          [channelId],
+        )
+        .then((r) => r.rows[0] ?? null),
     );
     return raw ? this.toRecord(raw) : null;
   }
@@ -126,8 +139,12 @@ export class ChannelRepository {
     return rows.map((r) => r.user_id);
   }
 
-  /** Üye yönetimi paneli için isim/unvan ile zenginleştirilmiş liste. */
-  async listMembersWithProfile(channelId: string): Promise<Array<{
+  /**
+   * Üye yönetimi paneli için isim/unvan ile zenginleştirilmiş liste.
+   * `users` tablosu RLS'lidir — `withTenant` şart, aksi halde JOIN
+   * sessizce sıfır satıra düşer.
+   */
+  async listMembersWithProfile(channelId: string, orgId: string): Promise<Array<{
     userId: string;
     displayName: string;
     email: string;
@@ -135,20 +152,24 @@ export class ChannelRepository {
     role: ChannelMemberRole;
     joinedAt: Date;
   }>> {
-    const rows = await this.db.query<{
-      user_id: string;
-      display_name: string;
-      email: string;
-      title: string | null;
-      role: ChannelMemberRole;
-      joined_at: Date;
-    }>(
-      `SELECT cm.user_id, u.display_name, u.email, u.title, cm.role, cm.joined_at
-         FROM channel_members cm
-         JOIN users u ON u.id = cm.user_id
-        WHERE cm.channel_id = $1 AND cm.left_at IS NULL
-        ORDER BY cm.role, u.display_name`,
-      [channelId],
+    const rows = await this.db.withTenant(orgId, (client) =>
+      client
+        .query<{
+          user_id: string;
+          display_name: string;
+          email: string;
+          title: string | null;
+          role: ChannelMemberRole;
+          joined_at: Date;
+        }>(
+          `SELECT cm.user_id, u.display_name, u.email, u.title, cm.role, cm.joined_at
+             FROM channel_members cm
+             JOIN users u ON u.id = cm.user_id
+            WHERE cm.channel_id = $1 AND cm.left_at IS NULL
+            ORDER BY cm.role, u.display_name`,
+          [channelId],
+        )
+        .then((r) => r.rows),
     );
 
     return rows.map((r) => ({
@@ -161,26 +182,47 @@ export class ChannelRepository {
     }));
   }
 
-  /** Kenar çubuğu — kullanıcının kanalları ve okunmamış sayıları, tek sorguda. */
+  /**
+   * Kenar çubuğu — kullanıcının kanalları ve okunmamış sayıları, tek sorguda.
+   *
+   * `withTenant` KULLANILIR: `channels` tablosu `tenant_isolation_channels`
+   * RLS politikasıyla korunur (`app.current_org` gerektirir). Düz `query`
+   * ile çağrıldığında bu SELECT HATA VERMEZ — sessizce sıfır satır döner.
+   * Sonuç: kanal gerçekten oluşturulur (bkz. `create`, o zaten `withTenant`
+   * kullanıyordu) ama kenar çubuğu boş kalır — "kanal oluşturdum ama
+   * görünmüyor" şikâyetinin kök nedeni buydu.
+   */
   async listForUser(orgId: string, userId: string): Promise<ChannelOverview[]> {
-    const rows = await this.db.query<RawChannel & {
-      unread_count: string;
-      last_read_seq: string;
-      is_pinned: boolean;
-      is_muted: boolean;
-    }>(
-      `SELECT c.id, c.org_id, c.type, c.visibility, c.name, c.slug, c.topic,
-              c.department_id, c.last_seq, c.e2ee_enabled, c.retention_id,
-              c.archived_at, c.created_by, c.created_at,
-              GREATEST(c.last_seq - cm.last_read_seq, 0) AS unread_count,
-              cm.last_read_seq, cm.is_pinned, cm.is_muted
-         FROM channel_members cm
-         JOIN channels c ON c.id = cm.channel_id
-        WHERE cm.user_id = $1 AND cm.left_at IS NULL
-          AND c.org_id = $2 AND c.archived_at IS NULL
-        -- Sabitlenmiş kanallar üstte, sonra en son mesaj alanlar.
-        ORDER BY cm.is_pinned DESC, c.last_message_at DESC NULLS LAST`,
-      [userId, orgId],
+    const rows = await this.db.withTenant(orgId, (client) =>
+      client
+        .query<RawChannel & {
+          unread_count: string;
+          last_read_seq: string;
+          is_pinned: boolean;
+          is_muted: boolean;
+          peer_user_id: string | null;
+        }>(
+          `SELECT c.id, c.org_id, c.type, c.visibility, c.name, c.slug, c.topic,
+                  c.department_id, c.last_seq, c.e2ee_enabled, c.retention_id,
+                  c.archived_at, c.created_by, c.created_at,
+                  GREATEST(c.last_seq - cm.last_read_seq, 0) AS unread_count,
+                  cm.last_read_seq, cm.is_pinned, cm.is_muted,
+                  -- DM'in karşı tarafı: aynı kanalın DIŞINDA kalan tek üye.
+                  -- Bu olmadan frontend DM'in "kiminle" olduğunu hiç bilemez
+                  -- ve başlık sonsuza kadar "…" görünür (bkz. directory.
+                  -- store.ts'in peerUserId'ye bağlı çözümleme mantığı).
+                  (SELECT cm2.user_id FROM channel_members cm2
+                    WHERE cm2.channel_id = c.id AND cm2.user_id != $1
+                    LIMIT 1) AS peer_user_id
+             FROM channel_members cm
+             JOIN channels c ON c.id = cm.channel_id
+            WHERE cm.user_id = $1 AND cm.left_at IS NULL
+              AND c.org_id = $2 AND c.archived_at IS NULL
+            -- Sabitlenmiş kanallar üstte, sonra en son mesaj alanlar.
+            ORDER BY cm.is_pinned DESC, c.last_message_at DESC NULLS LAST`,
+          [userId, orgId],
+        )
+        .then((r) => r.rows),
     );
 
     return rows.map((raw) => ({
@@ -189,6 +231,7 @@ export class ChannelRepository {
       lastReadSeq: Number(raw.last_read_seq),
       isPinned: raw.is_pinned,
       isMuted: raw.is_muted,
+      peerUserId: raw.type === 'DM' ? raw.peer_user_id ?? undefined : undefined,
     }));
   }
 
@@ -292,11 +335,15 @@ export class ChannelRepository {
       .update([userA, userB].sort().join(':'))
       .digest();
 
-    const existing = await this.db.queryMaybe<RawChannel>(
-      `SELECT id, org_id, type, visibility, name, slug, topic, department_id,
-              last_seq, e2ee_enabled, retention_id, archived_at, created_by, created_at
-         FROM channels WHERE org_id = $1 AND dm_key = $2`,
-      [orgId, dmKey],
+    const existing = await this.db.withTenant(orgId, (client) =>
+      client
+        .query<RawChannel>(
+          `SELECT id, org_id, type, visibility, name, slug, topic, department_id,
+                  last_seq, e2ee_enabled, retention_id, archived_at, created_by, created_at
+             FROM channels WHERE org_id = $1 AND dm_key = $2`,
+          [orgId, dmKey],
+        )
+        .then((r) => r.rows[0] ?? null),
     );
     if (existing) return this.toRecord(existing);
 
@@ -314,7 +361,13 @@ export class ChannelRepository {
         `INSERT INTO channels (id, org_id, type, visibility, dm_key, created_by)
          VALUES ($1, $2, 'DM', 'PRIVATE', $3, $4)
          -- Yarışı kaybeden taraf hata almaz, kazananın kanalını alır.
-         ON CONFLICT (org_id, dm_key) DO UPDATE SET updated_at = channels.updated_at
+         -- uq_channels_dm KISMİ (partial) bir indekstir (WHERE dm_key IS
+         -- NOT NULL, bkz. 001_schema.sql) -- PostgreSQL, ON CONFLICT hedef
+         -- cikarimini yalnizca AYNI WHERE kosulu burada da tekrarlanirsa
+         -- eslestirir; aksi halde "no unique or exclusion constraint
+         -- matching" hatasiyla her DM denemesi basarisiz olur.
+         ON CONFLICT (org_id, dm_key) WHERE dm_key IS NOT NULL
+         DO UPDATE SET updated_at = channels.updated_at
          RETURNING id, org_id, type, visibility, name, slug, topic, department_id,
                    last_seq, e2ee_enabled, retention_id, archived_at, created_by, created_at`,
         [channelId, orgId, dmKey, userA],

@@ -82,6 +82,13 @@ export class SetupService {
     if (orgName.length < 2) {
       throw new BadRequestException('Organizasyon adi en az 2 karakter olmali');
     }
+    // İstemci tarafı doğrulamasıyla AYNI kural (bkz. SetupWizard.tsx) —
+    // istemci kontrolüne asla tek başına güvenilmez. Ad doğrudan URL
+    // slug'ına dönüşür (bkz. uniqueSlug); boşluk/rakam serbest bırakılırsa
+    // slug üretimi öngörülemez hale gelir.
+    if (/\s|\d/u.test(orgName)) {
+      throw new BadRequestException('Organizasyon adi bosluk veya rakam iceremez');
+    }
 
     const displayName = input.adminDisplayName.trim();
     if (displayName.length < 2) {
@@ -107,6 +114,15 @@ export class SetupService {
 
       const orgId = randomUUID();
       const slug = await this.uniqueSlug(client, orgName);
+
+      // RLS: `users` (ve diğer kiracı-kapsamlı tablolar) `app.current_org`
+      // oturum değişkenine bakan bir politikayla korunur (bkz.
+      // DatabaseService.withTenant). Burada `withTenant` KULLANILMAZ çünkü
+      // organizasyon henüz yok — ama INSERT'lerin RLS'yi geçmesi için aynı
+      // `set_config`'i elle, transaction'a LOCAL olarak (üçüncü parametre
+      // `true`) uygulamak gerekir. Yeni üretilen `orgId` bu amaç için
+      // yeterlidir; satır az sonra zaten gerçekten oluşturulacaktır.
+      await client.query('SELECT set_config($1, $2, true)', ['app.current_org', orgId]);
 
       await client.query(
         `INSERT INTO organizations (id, slug, display_name, is_active)

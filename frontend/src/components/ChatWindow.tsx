@@ -15,6 +15,7 @@ import { MessageBubble } from './MessageBubble';
 import { TypingIndicator } from './TypingIndicator';
 import { ChannelHeader } from './ChannelHeader';
 import { ChannelMembersDialog } from './ChannelMembersDialog';
+import { apiFetch } from '../lib/api-client';
 
 /**
  * Sohbet Penceresi.
@@ -86,9 +87,8 @@ export function ChatWindow({ channelId, currentUserId }: ChatWindowProps) {
         const query = new URLSearchParams({ limit: '50' });
         if (beforeSeq !== null) query.set('before', String(beforeSeq));
 
-        const response = await fetch(`/api/v1/channels/${channelId}/messages?${query}`, {
+        const response = await apiFetch(`/api/v1/channels/${channelId}/messages?${query}`, {
           headers: { Accept: 'application/json' },
-          credentials: 'include',
         });
         if (!response.ok) throw new Error(`Geçmiş yüklenemedi (${response.status})`);
 

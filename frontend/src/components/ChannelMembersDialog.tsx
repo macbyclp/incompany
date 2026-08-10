@@ -6,6 +6,7 @@ import { Button, TextInput } from './ui/Form';
 import { Avatar } from './Avatar';
 import { useAuth } from '../store/auth.store';
 import { refreshChannels } from '../store/channels.store';
+import { apiFetch } from '../lib/api-client';
 
 /**
  * Kanal Üye Yönetimi.
@@ -69,7 +70,7 @@ export function ChannelMembersDialog({
     if (!open) return;
     setLoading(true);
     try {
-      const response = await fetch(`/api/v1/channels/${channelId}/members`, { credentials: 'include' });
+      const response = await apiFetch(`/api/v1/channels/${channelId}/members`);
       if (!response.ok) throw new Error(`Üyeler yüklenemedi (${response.status})`);
       const data = (await response.json()) as { members: Member[] };
       setMembers(data.members);
@@ -90,9 +91,8 @@ export function ChannelMembersDialog({
     // (tekrar eklenebilir) — hata durumunda `load()` gerçek duruma döner.
     setMembers((prev) => prev.filter((m) => m.userId !== userId));
     try {
-      const response = await fetch(`/api/v1/channels/${channelId}/members/${userId}`, {
+      const response = await apiFetch(`/api/v1/channels/${channelId}/members/${userId}`, {
         method: 'DELETE',
-        credentials: 'include',
       });
       if (!response.ok) throw new Error('Çıkarma başarısız');
 
@@ -215,7 +215,7 @@ function AddMembersDialog({
     setSelected(new Set());
     void (async () => {
       try {
-        const response = await fetch('/api/v1/users', { credentials: 'include' });
+        const response = await apiFetch('/api/v1/users');
         if (response.ok) {
           const data = (await response.json()) as { users: DirectoryUser[] };
           setPeople(data.users);
@@ -249,10 +249,9 @@ function AddMembersDialog({
     if (selected.size === 0) return;
     setSaving(true);
     try {
-      const response = await fetch(`/api/v1/channels/${channelId}/members`, {
+      const response = await apiFetch(`/api/v1/channels/${channelId}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ userIds: Array.from(selected) }),
       });
       if (!response.ok) throw new Error('Üye eklenemedi');

@@ -58,8 +58,14 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const validate = (): boolean => {
     const next: Partial<Record<keyof FormState, string>> = {};
 
-    if (form.organizationName.trim().length < 2) {
+    const orgName = form.organizationName.trim();
+    if (orgName.length < 2) {
       next.organizationName = 'En az 2 karakter olmalı';
+    } else if (/\s|\d/u.test(orgName)) {
+      // Organizasyon adı URL slug'ına dönüşür (bkz. backend SetupService.
+      // uniqueSlug) — boşluk ve rakam kasıtlı olarak yasaklanır, aksi halde
+      // slug üretimi öngörülemez hale gelir.
+      next.organizationName = 'Boşluk veya rakam içeremez (ör. OrnekSirket)';
     }
     if (form.adminDisplayName.trim().length < 2) {
       next.adminDisplayName = 'En az 2 karakter olmalı';
@@ -171,7 +177,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Organizasyon
             </h2>
-            <Field label="Organizasyon adı" required error={errors.organizationName}>
+            <Field
+              label="Organizasyon adı"
+              required
+              error={errors.organizationName}
+              hint="Boşluk ve rakam içeremez."
+            >
               {({ id, describedBy, invalid }) => (
                 <TextInput
                   id={id}
@@ -179,7 +190,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                   invalid={invalid}
                   value={form.organizationName}
                   onChange={(e) => set('organizationName', e.target.value)}
-                  placeholder="Örnek Şirket A.Ş."
+                  placeholder="OrnekSirket"
                   autoComplete="organization"
                   autoFocus
                   maxLength={100}

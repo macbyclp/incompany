@@ -120,21 +120,25 @@ export class FilesService {
     // izolasyonu uygulanabilir; dosya adı içermez → yol enjeksiyonu imkânsız.
     const storageKey = `${user.orgId}/${input.channelId}/${attachmentId}`;
 
-    await this.db.query(
-      `INSERT INTO attachments (
-         id, org_id, channel_id, uploader_id, storage_key,
-         file_name, mime_type, size_bytes, checksum_sha256, av_status
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'\\x0000000000000000000000000000000000000000000000000000000000000000'::bytea,'PENDING')`,
-      [
-        attachmentId,
-        user.orgId,
-        input.channelId,
-        user.id,
-        storageKey,
-        safeName,
-        input.mimeType,
-        input.sizeBytes,
-      ],
+    // `attachments` RLS'lidir (`tenant_isolation_attachments`) — `withTenant`
+    // olmadan bu INSERT reddedilir.
+    await this.db.withTenant(user.orgId, (client) =>
+      client.query(
+        `INSERT INTO attachments (
+           id, org_id, channel_id, uploader_id, storage_key,
+           file_name, mime_type, size_bytes, checksum_sha256, av_status
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'\\x0000000000000000000000000000000000000000000000000000000000000000'::bytea,'PENDING')`,
+        [
+          attachmentId,
+          user.orgId,
+          input.channelId,
+          user.id,
+          storageKey,
+          safeName,
+          input.mimeType,
+          input.sizeBytes,
+        ],
+      ),
     );
 
     const uploadUrl = await this.signUpload(storageKey, input.mimeType, input.sizeBytes);
@@ -166,16 +170,20 @@ export class FilesService {
     attachmentId: string,
     checksumSha256: string,
   ): Promise<{ ok: boolean; avStatus: string }> {
-    const attachment = await this.db.queryMaybe<{
-      id: string;
-      storage_key: string;
-      channel_id: string;
-      uploader_id: string;
-      size_bytes: string;
-    }>(
-      `SELECT id, storage_key, channel_id, uploader_id, size_bytes
-         FROM attachments WHERE id = $1 AND org_id = $2`,
-      [attachmentId, user.orgId],
+    const attachment = await this.db.withTenant(user.orgId, (client) =>
+      client
+        .query<{
+          id: string;
+          storage_key: string;
+          channel_id: string;
+          uploader_id: string;
+          size_bytes: string;
+        }>(
+          `SELECT id, storage_key, channel_id, uploader_id, size_bytes
+             FROM attachments WHERE id = $1 AND org_id = $2`,
+          [attachmentId, user.orgId],
+        )
+        .then((r) => r.rows[0] ?? null),
     );
 
     if (!attachment) throw new NotFoundException('Ek bulunamadi');
@@ -198,9 +206,11 @@ export class FilesService {
       throw new BadRequestException('Dosya boyutu bildirilenle uyusmuyor');
     }
 
-    await this.db.query(
-      `UPDATE attachments SET checksum_sha256 = decode($2, 'hex') WHERE id = $1`,
-      [attachmentId, checksumSha256],
+    await this.db.withTenant(user.orgId, (client) =>
+      client.query(
+        `UPDATE attachments SET checksum_sha256 = decode($2, 'hex') WHERE id = $1`,
+        [attachmentId, checksumSha256],
+      ),
     );
 
     // AV taraması kuyruğa alınır. Bu tamamlanana kadar dosya
@@ -244,18 +254,22 @@ export class FilesService {
       throw new ForbiddenException('Indirme siniri asildi');
     }
 
-    const attachment = await this.db.queryMaybe<{
-      id: string;
-      channel_id: string;
-      storage_key: string;
-      file_name: string;
-      mime_type: string;
-      av_status: string;
-      deleted_at: Date | null;
-    }>(
-      `SELECT id, channel_id, storage_key, file_name, mime_type, av_status, deleted_at
-         FROM attachments WHERE id = $1 AND org_id = $2`,
-      [attachmentId, user.orgId],
+    const attachment = await this.db.withTenant(user.orgId, (client) =>
+      client
+        .query<{
+          id: string;
+          channel_id: string;
+          storage_key: string;
+          file_name: string;
+          mime_type: string;
+          av_status: string;
+          deleted_at: Date | null;
+        }>(
+          `SELECT id, channel_id, storage_key, file_name, mime_type, av_status, deleted_at
+             FROM attachments WHERE id = $1 AND org_id = $2`,
+          [attachmentId, user.orgId],
+        )
+        .then((r) => r.rows[0] ?? null),
     );
 
     if (!attachment || attachment.deleted_at) throw new NotFoundException('Dosya bulunamadi');

@@ -7,6 +7,7 @@ import { Avatar } from '../Avatar';
 import { usePreferences, type ThemePreference } from '../../store/preferences.store';
 import { useAuth, authStore } from '../../store/auth.store';
 import { realtimeClient } from '../../realtime/socket';
+import { apiFetch } from '../../lib/api-client';
 
 /**
  * Ayarlar Diyaloğu.
@@ -96,10 +97,9 @@ function ProfileTab() {
     setSaving(true);
     setError(null);
     try {
-      const response = await fetch('/api/v1/users/me', {
+      const response = await apiFetch('/api/v1/users/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ displayName: name.trim(), title: title.trim() || undefined }),
       });
       if (!response.ok) throw new Error('Profil güncellenemedi');
@@ -464,7 +464,7 @@ function SecurityTab({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     void (async () => {
       try {
-        const response = await fetch('/api/v1/auth/sessions', { credentials: 'include' });
+        const response = await apiFetch('/api/v1/auth/sessions');
         if (response.ok) {
           const data = (await response.json()) as { sessions: SessionRow[] };
           setSessions(data.sessions);
@@ -476,7 +476,7 @@ function SecurityTab({ onClose }: { onClose: () => void }) {
   }, []);
 
   const handleLogoutAll = async (): Promise<void> => {
-    await fetch('/api/v1/auth/logout-all', { method: 'POST', credentials: 'include' });
+    await apiFetch('/api/v1/auth/logout-all', { method: 'POST' });
     onClose();
     logout('user_requested');
   };

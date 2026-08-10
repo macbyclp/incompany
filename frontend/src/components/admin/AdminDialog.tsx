@@ -4,20 +4,22 @@ import { GlobalRole } from '@incompany/contracts';
 import { Modal } from '../ui/Modal';
 import { Button, Field, TextInput, SelectInput, SettingsSection } from '../ui/Form';
 import { Avatar } from '../Avatar';
+import { apiFetch } from '../../lib/api-client';
 
 /**
  * Yönetim Paneli.
  *
  * KULLANICI OLUŞTURMA HAKKINDA ÖNEMLİ NOT:
- *   Bu form PAROLA ALMAZ ve almamalıdır. Kimlik doğrulama kurumsal IdP'de
- *   (Azure AD / Okta) yapılır; burada yapılan iş "provizyon"dur: kullanıcıya
- *   bu uygulamada bir kayıt ve rol açmak. Parola, MFA ve hesap kilitleme
- *   IdP'nin sorumluluğundadır.
+ *   SSO yapılandırılmışsa kimlik doğrulama kurumsal IdP'de (Azure AD / Okta)
+ *   yapılır. Ama bu dağıtım parola ile girişi de destekler (bkz. backend
+ *   `AuthService.loginWithPassword`) — SSO her zaman kurulu olmayabilir.
+ *   Bu yüzden burada oluşturulan kullanıcıya rastgele bir GEÇİCİ PAROLA
+ *   üretilir ve bir kez gösterilir (bkz. `UsersService.createUser`).
  *
- *   Üretimde bu işlemin tamamı SCIM ile otomatik yapılmalıdır — manuel
- *   provizyon, işten ayrılan çalışanın hesabının açık kalmasının bir
- *   numaralı sebebidir. Bu ekran, SCIM'in kapsamadığı istisnalar
- *   (yükleniciler, servis hesapları) ve acil durumlar içindir.
+ *   SSO kurulu bir organizasyonda üretimde bu işlem SCIM ile otomatik
+ *   yapılmalıdır — manuel provizyon, işten ayrılan çalışanın hesabının
+ *   açık kalmasının bir numaralı sebebidir. Bu ekran, SCIM'in kapsamadığı
+ *   istisnalar (yükleniciler, servis hesapları) ve acil durumlar içindir.
  */
 
 type Tab = 'users' | 'departments' | 'security';
@@ -106,7 +108,7 @@ function UsersPanel() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/v1/admin/users', { credentials: 'include' });
+      const response = await apiFetch('/api/v1/admin/users');
       if (!response.ok) throw new Error(`Kullanıcılar yüklenemedi (${response.status})`);
       const data = (await response.json()) as { users: AdminUser[] };
       setUsers(data.users);
@@ -137,10 +139,9 @@ function UsersPanel() {
     // Hata olursa `load()` ile gerçek duruma geri dönülür.
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...patch } : u)));
     try {
-      const response = await fetch(`/api/v1/admin/users/${userId}`, {
+      const response = await apiFetch(`/api/v1/admin/users/${userId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(patch),
       });
       if (!response.ok) throw new Error('Güncelleme başarısız');
@@ -255,10 +256,7 @@ function UsersPanel() {
       <CreateUserDialog
         open={creating}
         onClose={() => setCreating(false)}
-        onCreated={() => {
-          setCreating(false);
-          void load();
-        }}
+        onUserCreated={() => void load()}
       />
     </div>
   );
@@ -271,11 +269,12 @@ function UsersPanel() {
 function CreateUserDialog({
   open,
   onClose,
-  onCreated,
+  onUserCreated,
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  /** Yalnızca listeyi tazeler — diyaloğu KAPATMAZ (parola görüntülenmeye devam eder). */
+  onUserCreated: () => void;
 }) {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -283,6 +282,10 @@ function CreateUserDialog({
   const [role, setRole] = useState<GlobalRole>(GlobalRole.EMPLOYEE);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Oluşturma başarılı olunca geçici parola BİR KEZ burada gösterilir —
+  // sunucu düz metni bir daha asla döndürmez, kaybedilirse yönetici parolayı
+  // sıfırlamalıdır (o akış henüz yok).
+  const [createdCredentials, setCreatedCredentials] = useState<{ email: string; password: string } | null>(null);
 
   const reset = (): void => {
     setDisplayName('');
@@ -290,6 +293,7 @@ function CreateUserDialog({
     setTitle('');
     setRole(GlobalRole.EMPLOYEE);
     setErrors({});
+    setCreatedCredentials(null);
   };
 
   const validate = (): boolean => {
@@ -305,10 +309,9 @@ function CreateUserDialog({
 
     setSaving(true);
     try {
-      const response = await fetch('/api/v1/admin/users', {
+      const response = await apiFetch('/api/v1/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           displayName: displayName.trim(),
           email: email.trim().toLowerCase(),
@@ -323,8 +326,9 @@ function CreateUserDialog({
       }
       if (!response.ok) throw new Error('Kullanıcı oluşturulamadı');
 
-      reset();
-      onCreated();
+      const data = (await response.json()) as { id: string; temporaryPassword: string };
+      setCreatedCredentials({ email: email.trim().toLowerCase(), password: data.temporaryPassword });
+      onUserCreated();
     } catch (err) {
       setErrors({ form: (err as Error).message });
     } finally {
@@ -332,16 +336,55 @@ function CreateUserDialog({
     }
   };
 
+  const handleClose = (): void => {
+    reset();
+    onClose();
+  };
+
+  if (createdCredentials) {
+    return (
+      <Modal
+        open={open}
+        onClose={handleClose}
+        title="Kullanıcı oluşturuldu"
+        description="Bu geçici parola yalnızca BİR KEZ gösterilir — şimdi kopyalayıp kullanıcıya iletin."
+        size="sm"
+        footer={<Button variant="primary" onClick={handleClose}>Kapat</Button>}
+      >
+        <div className="space-y-3 px-5 py-4">
+          <div className="rounded-lg bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            Bu ekrandan ayrıldığınızda parola bir daha görüntülenemez. Kullanıcı ilk
+            girişte bu parolayla oturum açabilir (parola değiştirme akışı henüz yok).
+          </div>
+          <Field label="E-posta">
+            {({ id }) => <TextInput id={id} readOnly value={createdCredentials.email} onFocus={(e) => e.target.select()} />}
+          </Field>
+          <Field label="Geçici parola">
+            {({ id }) => (
+              <TextInput
+                id={id}
+                readOnly
+                value={createdCredentials.password}
+                className="font-mono"
+                onFocus={(e) => e.target.select()}
+              />
+            )}
+          </Field>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title="Yeni kullanıcı"
       description="Kullanıcıya bu uygulamada bir kayıt ve rol açılır."
       size="sm"
       footer={
         <>
-          <Button onClick={onClose}>İptal</Button>
+          <Button onClick={handleClose}>İptal</Button>
           <Button variant="primary" onClick={() => void handleSubmit()} loading={saving}>
             Oluştur
           </Button>
@@ -350,10 +393,11 @@ function CreateUserDialog({
     >
       <div className="space-y-4 px-5 py-4">
         <div className="rounded-lg bg-sky-50 px-3 py-2.5 text-xs leading-relaxed text-sky-900 dark:bg-sky-950 dark:text-sky-200">
-          <p className="font-medium">Parola belirlenmez</p>
+          <p className="font-medium">Geçici bir parola üretilir</p>
           <p className="mt-0.5">
-            Kimlik doğrulama kurumsal hesabınız (SSO) üzerinden yapılır. Kullanıcı ilk
-            girişte kendi kurumsal kimliğiyle oturum açar.
+            Kimlik doğrulama kurumsal SSO (Azure AD / Okta) yapılandırılınca oradan da
+            yapılabilir. Şimdilik kullanıcıya rastgele bir geçici parola atanır ve
+            oluşturma sonrası bir kez gösterilir — kullanıcıya siz iletirsiniz.
           </p>
         </div>
 
@@ -377,7 +421,7 @@ function CreateUserDialog({
           )}
         </Field>
 
-        <Field label="Kurumsal e-posta" required error={errors.email} hint="IdP'deki hesapla eşleşmelidir.">
+        <Field label="Kurumsal e-posta" required error={errors.email} hint="Kullanıcı bu e-posta ile giriş yapacak.">
           {({ id, describedBy, invalid }) => (
             <TextInput
               id={id}
@@ -419,13 +463,33 @@ function CreateUserDialog({
 
 // ---------------------------------------------------------------------------
 
+interface DepartmentRow {
+  id: string;
+  name: string;
+  code: string;
+  memberCount: number;
+  managerName: string | null;
+}
+
 function DepartmentsPanel() {
-  const departments = [
-    { name: 'Bilgi Teknolojileri', code: 'BT', members: 24, manager: 'Mehmet Ali Çalapverd' },
-    { name: 'İnsan Kaynakları', code: 'IK', members: 8, manager: 'Can Demir' },
-    { name: 'Ürün', code: 'URN', members: 15, manager: 'Zeynep Kaya' },
-    { name: 'Finans', code: 'FIN', members: 11, manager: '—' },
-  ];
+  const [departments, setDepartments] = useState<DepartmentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await apiFetch('/api/v1/departments');
+        if (!response.ok) throw new Error(`Departmanlar yuklenemedi (${response.status})`);
+        const data = (await response.json()) as { departments: DepartmentRow[] };
+        setDepartments(data.departments);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   return (
     <div>
@@ -433,47 +497,81 @@ function DepartmentsPanel() {
         title="Departmanlar"
         description="Departman yapısı kurumsal dizinden (LDAP/SCIM) senkronize edilir."
       >
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
-          {departments.map((dept) => (
-            <li key={dept.code} className="flex items-center justify-between gap-3 px-3 py-2.5">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-200">
-                  {dept.name}
-                  <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-normal text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                    {dept.code}
-                  </span>
-                </p>
-                <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                  Yönetici: {dept.manager}
-                </p>
-              </div>
-              <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                {dept.members} kişi
-              </span>
-            </li>
-          ))}
-        </ul>
+        {loading && <p className="text-xs text-slate-400">Yükleniyor…</p>}
+        {error && <p className="text-xs text-rose-600 dark:text-rose-400" role="alert">{error}</p>}
+        {!loading && !error && departments.length === 0 && (
+          <p className="text-xs text-slate-400">Henüz departman tanımlanmamış.</p>
+        )}
+        {departments.length > 0 && (
+          <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            {departments.map((dept) => (
+              <li key={dept.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-200">
+                    {dept.name}
+                    <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-normal text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      {dept.code}
+                    </span>
+                  </p>
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                    Yönetici: {dept.managerName ?? '—'}
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+                  {dept.memberCount} kişi
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </SettingsSection>
     </div>
   );
 }
 
-function SecurityPanel() {
-  const rules = [
-    { key: 'TCKN', name: 'T.C. Kimlik Numarası', action: 'Maskele', severity: 5 },
-    { key: 'CREDIT_CARD', name: 'Kredi Kartı Numarası', action: 'Engelle', severity: 5 },
-    { key: 'IBAN_TR', name: 'IBAN (TR)', action: 'Maskele', severity: 4 },
-    { key: 'AWS_ACCESS_KEY', name: 'AWS Erişim Anahtarı', action: 'Engelle', severity: 5 },
-    { key: 'PRIVATE_KEY', name: 'Özel Anahtar (PEM)', action: 'Engelle', severity: 5 },
-    { key: 'JWT_TOKEN', name: 'JWT Token', action: 'Engelle', severity: 5 },
-    { key: 'GENERIC_SECRET', name: 'Şifre / API Anahtarı Ataması', action: 'Uyar', severity: 3 },
-  ];
+interface DlpRuleRow {
+  key: string;
+  name: string;
+  action: 'ALLOW' | 'MASK' | 'WARN' | 'BLOCK';
+  severity: number;
+}
 
-  const actionTone: Record<string, string> = {
-    Engelle: 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
-    Maskele: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-    Uyar: 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
-  };
+const ACTION_LABELS: Record<DlpRuleRow['action'], string> = {
+  ALLOW: 'İzin ver',
+  MASK: 'Maskele',
+  WARN: 'Uyar',
+  BLOCK: 'Engelle',
+};
+
+const ACTION_TONE: Record<DlpRuleRow['action'], string> = {
+  BLOCK: 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+  MASK: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+  WARN: 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
+  ALLOW: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+};
+
+function SecurityPanel() {
+  const [rules, setRules] = useState<DlpRuleRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        // Gerçek DLP motorunun kuralları — sunucu her mesajı bunlara karşı
+        // tarar (bkz. backend `DlpController`/`DlpService`). Bu panel daha
+        // önce bu uç noktayı hiç çağırmıyordu, sabit örnek veri gösteriyordu.
+        const response = await apiFetch('/api/v1/dlp/rules');
+        if (!response.ok) throw new Error(`DLP kurallari yuklenemedi (${response.status})`);
+        const data = (await response.json()) as { rules: DlpRuleRow[] };
+        setRules(data.rules);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   return (
     <div>
@@ -481,41 +579,34 @@ function SecurityPanel() {
         title="DLP kuralları"
         description="Hassas veri içeren mesajlar gönderilmeden önce taranır ve maskelenir veya engellenir."
       >
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
-          {rules.map((rule) => (
-            <li key={rule.key} className="flex items-center justify-between gap-3 px-3 py-2.5">
-              <div className="min-w-0">
-                <p className="truncate text-sm text-slate-800 dark:text-slate-200">{rule.name}</p>
-                <p className="truncate font-mono text-[11px] text-slate-400">{rule.key}</p>
-              </div>
-              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${actionTone[rule.action]}`}>
-                {rule.action}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {loading && <p className="text-xs text-slate-400">Yükleniyor…</p>}
+        {error && <p className="text-xs text-rose-600 dark:text-rose-400" role="alert">{error}</p>}
+        {!loading && !error && rules.length === 0 && (
+          <p className="text-xs text-slate-400">
+            Bu organizasyon için henüz özel bir DLP kuralı tanımlanmamış.
+          </p>
+        )}
+        {rules.length > 0 && (
+          <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            {rules.map((rule) => (
+              <li key={rule.key} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-slate-800 dark:text-slate-200">{rule.name}</p>
+                  <p className="truncate font-mono text-[11px] text-slate-400">{rule.key}</p>
+                </div>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${ACTION_TONE[rule.action]}`}>
+                  {ACTION_LABELS[rule.action]}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
           Kurallar iki aşamalı çalışır: önce desen eşleştirmesi, ardından sağlama
           toplamı doğrulaması. Bu sayede rastgele 11 haneli bir sipariş numarası
           TCKN sanılıp engellenmez.
         </p>
-      </SettingsSection>
-
-      <SettingsSection title="Saklama politikası">
-        <dl className="grid grid-cols-2 gap-3 text-sm">
-          {[
-            ['Mesaj saklama', '2 yıl'],
-            ['Dosya saklama', '1 yıl'],
-            ['Denetim kaydı', '7 yıl'],
-            ['Yasal muhafaza', 'Kapalı'],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800">
-              <dt className="text-[11px] uppercase tracking-wide text-slate-400">{label}</dt>
-              <dd className="mt-0.5 font-medium text-slate-800 dark:text-slate-200">{value}</dd>
-            </div>
-          ))}
-        </dl>
       </SettingsSection>
     </div>
   );

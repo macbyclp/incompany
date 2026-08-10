@@ -192,12 +192,20 @@ export class AuditService implements OnModuleDestroy {
     checked: number;
     brokenAt: string | null;
   }> {
-    const rows = await this.db.query<{ id: string; prev_hash: Buffer | null; record_hash: Buffer; created_at: Date }>(
-      `SELECT id, prev_hash, record_hash, created_at
-         FROM audit_logs
-        WHERE org_id = $1 AND created_at BETWEEN $2 AND $3
-        ORDER BY created_at ASC, id ASC`,
-      [orgId, from, to],
+    // RLS (`tenant_isolation_audit`) `app.current_org` ayarlanmadan bu
+    // SELECT'i sessizce sıfır satıra düşürür — "zincir doğrulandı, kırık
+    // yok" YANLIŞ pozitifi üretir ki bu, tam da bu fonksiyonun tespit
+    // etmesi gereken türden bir kurcalamayı gizlemiş olurdu.
+    const rows = await this.db.withTenant(orgId, (client) =>
+      client
+        .query<{ id: string; prev_hash: Buffer | null; record_hash: Buffer; created_at: Date }>(
+          `SELECT id, prev_hash, record_hash, created_at
+             FROM audit_logs
+            WHERE org_id = $1 AND created_at BETWEEN $2 AND $3
+            ORDER BY created_at ASC, id ASC`,
+          [orgId, from, to],
+        )
+        .then((r) => r.rows),
     );
 
     for (let i = 1; i < rows.length; i += 1) {
@@ -221,27 +229,33 @@ export class AuditService implements OnModuleDestroy {
   // -------------------------------------------------------------------------
 
   private async writeOne(entry: AuditEntry): Promise<void> {
-    await this.db.query(
-      `INSERT INTO audit_logs (
-         org_id, actor_id, actor_email, impersonated_by, action, resource_type,
-         resource_id, outcome, ip_address, user_agent, session_id, trace_id, metadata
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::audit_outcome,$9,$10,$11,$12,$13::jsonb)`,
-      [
-        entry.orgId,
-        entry.actorId ?? null,
-        entry.actorEmail ?? null,
-        entry.impersonatedBy ?? null,
-        entry.action,
-        entry.resourceType,
-        entry.resourceId ?? null,
-        entry.outcome ?? 'SUCCESS',
-        entry.ipAddress ?? null,
-        entry.userAgent ?? null,
-        entry.sessionId ?? null,
-        entry.traceId ?? null,
-        JSON.stringify(this.redactMetadata(entry.metadata ?? {})),
-      ],
-    );
+    // `audit_logs` üzerindeki `tenant_isolation_audit` politikası yalnızca
+    // `USING` tanımlar; PostgreSQL, ayrı bir `WITH CHECK` yoksa aynı ifadeyi
+    // INSERT'e de uygular. Yani `app.current_org` ayarlanmadan hiçbir satır
+    // eklenemez — `withTenant` bunu transaction'a LOCAL olarak uygular.
+    await this.db.withTenant(entry.orgId, async (client) => {
+      await client.query(
+        `INSERT INTO audit_logs (
+           org_id, actor_id, actor_email, impersonated_by, action, resource_type,
+           resource_id, outcome, ip_address, user_agent, session_id, trace_id, metadata
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::audit_outcome,$9,$10,$11,$12,$13::jsonb)`,
+        [
+          entry.orgId,
+          entry.actorId ?? null,
+          entry.actorEmail ?? null,
+          entry.impersonatedBy ?? null,
+          entry.action,
+          entry.resourceType,
+          entry.resourceId ?? null,
+          entry.outcome ?? 'SUCCESS',
+          entry.ipAddress ?? null,
+          entry.userAgent ?? null,
+          entry.sessionId ?? null,
+          entry.traceId ?? null,
+          JSON.stringify(this.redactMetadata(entry.metadata ?? {})),
+        ],
+      );
+    });
   }
 
   /**
@@ -262,6 +276,12 @@ export class AuditService implements OnModuleDestroy {
     try {
       await this.db.transaction(async (client) => {
         for (const entry of batch) {
+          // Parti farklı organizasyonlara ait kayıtlar içerebilir; RLS
+          // politikası (`tenant_isolation_audit`) her satır için
+          // `app.current_org`'un o satırın org_id'siyle eşleşmesini
+          // gerektirir (bkz. writeOne yorumu) — bu yüzden her INSERT'ten
+          // önce ayarlanır, döngü başında bir kez değil.
+          await client.query('SELECT set_config($1, $2, true)', ['app.current_org', entry.orgId]);
           await client.query(
             `INSERT INTO audit_logs (
                org_id, actor_id, actor_email, action, resource_type,

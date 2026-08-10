@@ -53,6 +53,11 @@ data/
 !db/postgres/*.sql
 !db/scylla/*.cql
 
+# Yerel geliştirme çalışma alanı: Postgres/Redis birim verisi, servis
+# logları ve kurulum sırasında üretilen GERÇEK kimlik bilgileri
+# (master.txt, access.txt, pgpass_init.txt). Bu klasör asla commit edilmez.
+.localdev/
+
 # --- Editör ------------------------------------------------------------------
 .vscode/*
 !.vscode/extensions.json

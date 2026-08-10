@@ -139,7 +139,17 @@ export const authStore = create<AuthState>((set, get) => ({
    */
   hydrateFromServer: async () => {
     try {
-      const response = await fetch('/api/v1/auth/me', { credentials: 'include' });
+      // `/auth/me`, `JwtAuthGuard` arkasındadır ve YALNIZCA `Authorization:
+      // Bearer <token>` başlığını okur (çerezi değil — refresh çerezi ayrı
+      // bir amaca hizmet eder). Bu başlık eksikse istek her zaman 401 döner;
+      // gerçek bir backend'e karşı ilk kez çalıştırıldığında (giriş/kurulum
+      // başarılı ama ardından "Oturum açılamadı" hatası) bu şekilde ortaya
+      // çıktı.
+      const accessToken = get().accessToken;
+      const response = await fetch('/api/v1/auth/me', {
+        credentials: 'include',
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      });
       if (!response.ok) return false;
 
       const me = (await response.json()) as {
@@ -170,9 +180,15 @@ export const authStore = create<AuthState>((set, get) => ({
   logout: (reason) => {
     // Sunucuya bildir — refresh çerezi ve oturum kaydı temizlensin.
     // Yanıt BEKLENMEZ: istemci tarafı çıkış her koşulda gerçekleşmelidir.
-    void fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).catch(
-      () => undefined,
-    );
+    // `/auth/logout` `JwtAuthGuard` arkasındadır — token, state sıfırlanmadan
+    // ÖNCE okunmalı, aksi halde başlık boş gider ve istek 401 alır (sunucu
+    // tarafında oturum kaydı hiç temizlenmemiş olur).
+    const accessToken = get().accessToken;
+    void fetch('/api/v1/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    }).catch(() => undefined);
 
     set({ ...EMPTY_SESSION, status: 'unauthenticated', logoutReason: reason ?? null });
   },
