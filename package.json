@@ -1,0 +1,50 @@
+{
+  "name": "incompany",
+  "version": "1.0.0",
+  "description": "Şirket içi zihin sistemi",
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "node dist/main.js",
+    "dev": "tsx src/dev.ts",
+    "serve": "tsx src/main.ts",
+    "cli": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/macbyclp/incompany.git"
+  },
+  "license": "UNLICENSED",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/macbyclp/incompany/issues"
+  },
+  "homepage": "https://github.com/macbyclp/incompany#readme",
+  "dependencies": {
+    "@slack/bolt": "^5.1.0",
+    "baileys": "^7.0.0-rc14",
+    "fastify": "^5.12.5",
+    "grammy": "^1.46.0",
+    "imapflow": "^2.4.0",
+    "mailparser": "^3.9.38",
+    "pg": "^8.23.1",
+    "pino": "^10.4.0",
+    "qrcode": "^1.5.4",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@types/mailparser": "^3.9.0",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}

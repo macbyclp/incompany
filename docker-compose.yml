@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?.env içinde POSTGRES_PASSWORD gerekli}
+      POSTGRES_DB: incompany
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on: [db]
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/incompany
+      APP_SECRET: ${APP_SECRET:?.env içinde APP_SECRET gerekli (en az 24 karakter)}
+    ports:
+      # Yalnız yerel makineye açık; internete HTTPS ters vekil (Caddy/nginx) üzerinden çıkın.
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - appdata:/data
+
+volumes:
+  pgdata:
+  appdata:

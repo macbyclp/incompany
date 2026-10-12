@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>incompany</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230f766e'/%3E%3Ccircle cx='11' cy='16' r='4' fill='white'/%3E%3Ccircle cx='21' cy='16' r='4' fill='white' fill-opacity='.55'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f6f5f2;--surface:#ffffff;--surface-2:#faf9f7;--ink:#17201e;--ink-2:#4b5a56;--ink-3:#8a9893;
+  --line:#e6e3dd;--line-2:#d8d4cc;
+  --brand:#0f766e;--brand-ink:#ffffff;--brand-soft:#e1f1ee;--brand-line:#b6dcd5;
+  --side:#10201d;--side-ink:#cfe0db;--side-mut:#7f9791;--side-act:#1c3631;
+  --ok:#15803d;--ok-bg:#e3f4e8;--warn:#a16207;--warn-bg:#fbf0d3;--bad:#b42318;--bad-bg:#fbe4e1;--idle:#5b6764;--idle-bg:#ecebe7;
+  --wa:#1f9d55;--tg:#2481cc;--sl:#c0492b;--em:#7a5c2e;
+  --shadow:0 1px 2px rgba(20,32,29,.05),0 6px 20px -8px rgba(20,32,29,.12);
+  --radius:14px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#0c1311;--surface:#131d1a;--surface-2:#101815;--ink:#e6efec;--ink-2:#a5b6b1;--ink-3:#6f827c;
+  --line:#22302c;--line-2:#2d3f3a;
+  --brand:#2dd4bf;--brand-ink:#04211d;--brand-soft:#12332e;--brand-line:#1d4f47;
+  --side:#08100e;--side-ink:#cfe0db;--side-mut:#6f867f;--side-act:#13241f;
+  --ok:#5fd28a;--ok-bg:#12301f;--warn:#e8b947;--warn-bg:#33290f;--bad:#ff8a7e;--bad-bg:#3a1713;--idle:#9bacA6;--idle-bg:#1b2723;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5);
+}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:14.5px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{margin:0;line-height:1.25;letter-spacing:-.01em}
+a{color:var(--brand)}
+.hidden{display:none!important}
+.mut{color:var(--ink-3)}.mut2{color:var(--ink-2)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
+
+/* kabuk */
+.shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+.side{background:var(--side);color:var(--side-ink);padding:18px 14px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 10px 18px;font-weight:650;font-size:17px;letter-spacing:-.02em;color:#fff}
+.logo{width:30px;height:30px;border-radius:9px;background:var(--brand);display:grid;place-items:center;flex:none}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav a{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;color:var(--side-ink);text-decoration:none;cursor:pointer;font-weight:520}
+.nav a svg{width:18px;height:18px;opacity:.75;flex:none}
+.nav a:hover{background:rgba(255,255,255,.05)}
+.nav a.active{background:var(--side-act);color:#fff}.nav a.active svg{opacity:1;color:var(--brand)}
+.nav .sep{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--side-mut);padding:16px 11px 6px}
+.userbox{margin-top:auto;border-top:1px solid rgba(255,255,255,.08);padding:14px 8px 4px;display:flex;align-items:center;gap:10px}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;font-weight:650;flex:none}
+.userbox .who{min-width:0;flex:1}.userbox .who b{display:block;color:#fff;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.userbox .who span{font-size:12px;color:var(--side-mut)}
+.iconbtn{background:none;border:0;color:var(--side-mut);cursor:pointer;padding:6px;border-radius:8px}.iconbtn:hover{color:#fff;background:rgba(255,255,255,.07)}
+
+main{padding:30px clamp(18px,4vw,44px) 60px;max-width:1180px;width:100%}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.head h1{font-size:25px}.head p{margin:4px 0 0;color:var(--ink-2)}
+
+/* ortak bileşenler */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px}
+.grid{display:grid;gap:14px}
+.g4{grid-template-columns:repeat(4,1fr)}.g2{grid-template-columns:1.6fr 1fr}.g3{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+.stat .n{font-size:30px;font-weight:650;letter-spacing:-.03em;line-height:1.1}
+.stat .l{color:var(--ink-2);margin-top:2px}.stat .s{font-size:12.5px;color:var(--ink-3);margin-top:8px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface);cursor:pointer;font-weight:550;white-space:nowrap}
+.btn:hover{background:var(--surface-2);border-color:var(--ink-3)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}.btn.primary:hover{filter:brightness(1.07)}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}.btn.danger:hover{background:var(--bad-bg)}
+.btn.sm{padding:5px 10px;font-size:13px;border-radius:8px}
+.btn svg{width:16px;height:16px}
+.btn[disabled]{opacity:.5;pointer-events:none}
+input[type=text],input[type=password],input[type=search],input[type=number],input[type=email],select,textarea{width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:10px;background:var(--surface);outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 22%,transparent)}
+label.f{display:block;margin:0 0 14px}label.f>span{display:block;font-weight:560;margin-bottom:5px}label.f small{display:block;color:var(--ink-3);margin-top:4px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:99px;font-size:12.5px;font-weight:580;background:var(--idle-bg);color:var(--idle)}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}.pill.warn{background:var(--warn-bg);color:var(--warn)}.pill.bad{background:var(--bad-bg);color:var(--bad)}
+.chip{display:inline-block;padding:1px 9px;border-radius:7px;font-size:12px;font-weight:600;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2)}
+.src{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:11px;color:#fff;flex:none}
+.src svg{width:20px;height:20px}
+.src.whatsapp{background:var(--wa)}.src.telegram{background:var(--tg)}.src.slack{background:var(--sl)}.src.email{background:var(--em)}
+.empty{text-align:center;padding:44px 20px;color:var(--ink-2)}.empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
+.notice{display:flex;gap:12px;align-items:flex-start;background:var(--brand-soft);border:1px solid var(--brand-line);border-radius:12px;padding:12px 14px;color:var(--ink);margin-bottom:18px}
+.notice svg{width:20px;height:20px;color:var(--brand);flex:none;margin-top:2px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.row.sb{justify-content:space-between}
+
+/* kaynak kartı */
+.acc{display:flex;flex-direction:column;gap:12px}
+.acc .top{display:flex;gap:12px;align-items:center}.acc .top .t{min-width:0;flex:1}.acc .top b{display:block;font-size:15.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acc .scope{display:flex;gap:6px;flex-wrap:wrap}
+.acc .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+
+/* grafik */
+.bars{display:flex;align-items:flex-end;gap:6px;height:140px;padding-top:8px}
+.bars div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;height:100%}
+.bars i{display:block;width:100%;border-radius:6px 6px 3px 3px;background:var(--brand);opacity:.85;min-height:3px;transition:height .4s}
+.bars span{font-size:11px;color:var(--ink-3)}
+.bars div:hover i{opacity:1}
+.meter{height:8px;border-radius:99px;background:var(--idle-bg);overflow:hidden;margin:6px 0 12px}.meter i{display:block;height:100%;border-radius:99px;background:var(--brand)}
+
+/* liste */
+.list{display:flex;flex-direction:column}
+.item{display:flex;align-items:center;gap:14px;padding:13px 4px;border-top:1px solid var(--line);cursor:pointer}
+.item:first-child{border-top:0}.item:hover{background:var(--surface-2)}
+.item .t{min-width:0;flex:1}.item .t b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}.toolbar input{max-width:320px}
+.seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:3px;gap:2px}
+.seg button{border:0;background:none;padding:6px 12px;border-radius:8px;cursor:pointer;font-weight:550;color:var(--ink-2)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+mark{background:color-mix(in srgb,var(--brand) 25%,transparent);color:inherit;border-radius:3px;padding:0 2px}
+table{width:100%;border-collapse:collapse}th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;padding:8px 10px}
+td{padding:11px 10px;border-top:1px solid var(--line)}
+
+/* modal + çekmece */
+.scrim{position:fixed;inset:0;background:rgba(8,14,12,.5);backdrop-filter:blur(3px);display:grid;place-items:center;padding:18px;z-index:50;animation:fade .15s}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:0 30px 80px -20px rgba(0,0,0,.5);width:min(540px,100%);max-height:92vh;overflow:auto;padding:24px}
+.modal h2{font-size:19px;margin-bottom:6px}.modal .sub{color:var(--ink-2);margin:0 0 18px}
+.modal .foot{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,100%);background:var(--surface);border-left:1px solid var(--line);box-shadow:-20px 0 60px -20px rgba(0,0,0,.4);z-index:50;display:flex;flex-direction:column;animation:slide .2s}
+.drawer .dh{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+.drawer .db{flex:1;overflow:auto;padding:16px 20px;display:flex;flex-direction:column;gap:10px;background:var(--surface-2)}
+.drawer .df{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
+.msg{max-width:88%;background:var(--surface);border:1px solid var(--line);border-radius:14px 14px 14px 4px;padding:9px 13px}
+.msg.me{align-self:flex-end;background:var(--brand-soft);border-color:var(--brand-line);border-radius:14px 14px 4px 14px}
+.msg .who{font-size:12px;font-weight:650;color:var(--brand)}.msg .tm{font-size:11.5px;color:var(--ink-3);margin-top:3px}.msg .sj{font-weight:650}
+.opt{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line-2);border-radius:12px;cursor:pointer;margin-bottom:8px}
+.opt:has(input:checked){border-color:var(--brand);background:var(--brand-soft)}
+.opt input{margin-top:4px;accent-color:var(--brand)}.opt b{display:block}.opt span{color:var(--ink-2);font-size:13.5px}
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:18px}
+.tile{display:flex;gap:12px;align-items:center;padding:12px;border:1px solid var(--line-2);border-radius:13px;cursor:pointer;background:var(--surface)}
+.tile:hover{border-color:var(--brand)}.tile b{display:block}.tile span{font-size:12.5px;color:var(--ink-2)}
+.qrbox{display:grid;place-items:center;min-height:300px;background:#fff;border-radius:14px;border:1px solid var(--line);margin:8px 0}.qrbox img{width:280px;height:280px}
+.toasts{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:90}
+.toast{background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:11px;box-shadow:var(--shadow);animation:fade .2s;max-width:90vw}
+.toast.bad{background:var(--bad);color:#fff}
+.tokenbox{display:flex;gap:8px;align-items:center;background:var(--surface-2);border:1px dashed var(--brand);border-radius:11px;padding:10px 12px;word-break:break-all}
+@keyframes fade{from{opacity:0}}@keyframes slide{from{transform:translateX(30px);opacity:0}}
+
+/* giriş */
+.login{min-height:100vh;display:grid;place-items:center;padding:20px;background:
+  radial-gradient(900px 500px at 15% -10%,color-mix(in srgb,var(--brand) 16%,transparent),transparent),var(--bg)}
+.login .card{width:min(430px,100%);padding:32px}
+.login .logo{width:46px;height:46px;border-radius:13px;margin-bottom:18px}
+.login h1{font-size:24px;margin-bottom:6px}.login p{color:var(--ink-2);margin:0 0 22px}
+
+@media (max-width:860px){
+  .shell{grid-template-columns:1fr}
+  .side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:10px}
+  .brand{padding:0 8px}.nav{flex-direction:row;flex-wrap:wrap}.nav .sep{display:none}.nav a span{display:none}
+  .userbox{margin:0 0 0 auto;border:0;padding:0}.userbox .who{display:none}
+  .g4,.g2{grid-template-columns:1fr 1fr}.g2{grid-template-columns:1fr}
+}
+@media (max-width:520px){.g4{grid-template-columns:1fr}.tiles{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div id="login" class="login hidden">
+  <div class="card">
+    <div class="logo"><svg width="26" height="26" viewBox="0 0 32 32"><circle cx="11" cy="16" r="5" fill="#fff"/><circle cx="21" cy="16" r="5" fill="#fff" fill-opacity=".55"/></svg></div>
+    <h1>incompany</h1>
+    <p>Şirket içi zihin sistemi. Devam etmek için yöneticinin verdiği erişim anahtarını gir.</p>
+    <label class="f"><span>Erişim anahtarı</span><input id="tok" type="password" autocomplete="off" placeholder="Anahtarını buraya yapıştır"></label>
+    <button class="btn primary" id="loginBtn" style="width:100%;justify-content:center">Giriş yap</button>
+    <p id="loginErr" class="mut" style="margin:14px 0 0;color:var(--bad)"></p>
+  </div>
+</div>
+
+<div id="shell" class="shell hidden">
+  <aside class="side">
+    <div class="brand"><div class="logo"><svg width="18" height="18" viewBox="0 0 32 32"><circle cx="11" cy="16" r="5" fill="#fff"/><circle cx="21" cy="16" r="5" fill="#fff" fill-opacity=".55"/></svg></div>incompany</div>
+    <nav class="nav" id="nav"></nav>
+    <div class="userbox"><div class="avatar" id="av"></div><div class="who"><b id="uname"></b><span id="urole"></span></div>
+      <button class="iconbtn" id="logout" title="Çıkış"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+/* ---------- yardımcılar ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+function h(tag, a, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(a || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'html') el.innerHTML = v;      // yalnız sabit ikonlar için
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (k === 'value') el.value = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat(Infinity)) { if (c == null || c === false) continue; el.append(c.nodeType ? c : document.createTextNode(c)); }
+  return el;
+}
+const ic = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" ${extra}>${d}</svg>`;
+const I = {
+  home: ic('<path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/>'),
+  plug: ic('<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0V8zM12 18v4"/>'),
+  chat: ic('<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-5.4A8 8 0 1 1 21 12z"/>'),
+  search: ic('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>'),
+  shield: ic('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/>'),
+  users: ic('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 20a6 6 0 0 0-3-5.2"/>'),
+  plus: ic('<path d="M12 5v14M5 12h14"/>'),
+  info: ic('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'),
+  wa: ic('<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-5.4A8 8 0 1 1 21 12z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 .8a3.5 3.5 0 0 1-1.8-1.8l.8-1-1-2z"/>'),
+  tg: ic('<path d="M21 4L3 11l6 2 2 6 3-4 5 4 2-15z"/>'),
+  sl: ic('<path d="M4 9h16M4 15h16M9 3L7 21M17 3l-2 18"/>'),
+  em: ic('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'),
+  send: ic('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>'),
+};
+const SRC = {
+  whatsapp: { name: 'WhatsApp', icon: I.wa, desc: 'Kendi hesabını QR ile bağla (WhatsApp Web gibi)' },
+  telegram: { name: 'Telegram', icon: I.tg, desc: 'Gruplara eklenen şirket botu' },
+  slack: { name: 'Slack', icon: I.sl, desc: 'Kanallara eklenen şirket uygulaması' },
+  email: { name: 'E-posta', icon: I.em, desc: 'IMAP kutusu, yalnız rızanla' },
+};
+const STATUS = {
+  connected: ['Bağlı', 'ok'], awaiting_qr: ['QR bekliyor', 'warn'], awaiting_consent: ['Rıza bekliyor', 'warn'],
+  reconnecting: ['Yeniden bağlanıyor', 'warn'], logged_out: ['Bağlantı koptu', 'bad'], error: ['Hata', 'bad'],
+  revoked: ['Rıza geri çekildi', ''], new: ['Yeni', '']
+};
+const fmtDate = (d) => new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(d));
+const fmtNum = (n) => new Intl.NumberFormat('tr-TR').format(n);
+const initials = (n) => (n || '?').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+function toast(msg, bad) { const t = h('div', { class: 'toast' + (bad ? ' bad' : '') }, msg); $('#toasts').append(t); setTimeout(() => t.remove(), 3800); }
+
+let TOKEN = ''; try { TOKEN = sessionStorage.getItem('t') || ''; } catch {}
+async function api(path, opt = {}) {
+  const r = await fetch(path, { method: opt.method || 'GET', headers: { authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json' }, body: opt.body === undefined ? undefined : JSON.stringify(opt.body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('Hata ' + r.status));
+  return j;
+}
+async function act(fn, ok) { try { const r = await fn(); if (ok) toast(ok); return r; } catch (e) { toast(e.message, true); throw e; } }
+
+/* ---------- modal / çekmece ---------- */
+function modal(content) {
+  const scrim = h('div', { class: 'scrim', onmousedown: (e) => { if (e.target === scrim) close(); } }, h('div', { class: 'modal' }, content));
+  const close = () => { scrim.remove(); document.removeEventListener('keydown', esc); scrim.onclose && scrim.onclose(); };
+  const esc = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', esc); document.body.append(scrim);
+  return { close, el: scrim };
+}
+function drawer(head, body, foot) {
+  const d = h('aside', { class: 'drawer' }, h('div', { class: 'dh' }, head, h('button', { class: 'btn sm', onclick: () => close() }, 'Kapat')), body, foot);
+  const close = () => d.remove(); document.body.append(d); return { close, el: d };
+}
+
+/* ---------- yönlendirme ---------- */
+const VIEWS = {
+  overview: ['Genel bakış', I.home, overview], accounts: ['Kaynaklar', I.plug, accounts], conversations: ['Konuşmalar', I.chat, conversations],
+  search: ['Ara', I.search, searchView], consent: ['Rıza geçmişi', I.shield, consentLog], team: ['Ekip', I.users, team, true],
+};
+let ME = null, SPACES = [];
+function route() {
+  const key = (location.hash.replace('#/', '') || 'overview'); const v = VIEWS[key] && (!VIEWS[key][3] || ME.is_admin) ? key : 'overview';
+  $('#nav').replaceChildren(
+    ...Object.entries(VIEWS).filter(([, v]) => !v[3] || ME.is_admin).map(([k, v]) =>
+      h('a', { class: k === 'overview' && false ? '' : (k === key ? 'active' : ''), href: '#/' + k }, h('span', { html: v[1] }), h('span', null, v[0]))));
+  const main = $('#main'); main.replaceChildren(h('div', { class: 'mut' }, 'Yükleniyor…'));
+  VIEWS[v][2](main).catch((e) => main.replaceChildren(h('div', { class: 'card empty' }, h('b', null, 'Bir sorun oluştu'), e.message)));
+}
+window.addEventListener('hashchange', route);
+const page = (title, sub, actions) => h('div', { class: 'head' }, h('div', null, h('h1', null, title), sub && h('p', null, sub)), actions && h('div', { class: 'row' }, actions));
+
+/* ---------- Genel bakış ---------- */
+async function overview(main) {
+  const [o, accs] = await Promise.all([api('/overview'), api('/accounts')]);
+  const days = [];
+  for (let i = 13; i >= 0; i--) { const d = new Date(Date.now() - i * 864e5).toISOString().slice(0, 10); days.push({ day: d, n: (o.daily.find(x => x.day === d) || {}).n || 0 }); }
+  const max = Math.max(1, ...days.map(d => d.n)), totalSrc = Math.max(1, ...o.bySource.map(s => s.n));
+  const pending = accs.filter(a => ['awaiting_consent', 'awaiting_qr'].includes(a.status));
+  main.replaceChildren(
+    page('Merhaba, ' + ME.name.split(' ')[0], 'Şirketin ortak hafızasında ve kendi kişisel alanında neler birikti.',
+      h('button', { class: 'btn primary', onclick: () => addSource() }, h('span', { html: I.plus }), 'Kaynak ekle')),
+    pending.length ? h('div', { class: 'notice' }, h('span', { html: I.info }), h('div', null, h('b', null, pending.length + ' kaynak senden bir adım bekliyor. '),
+      pending.map(a => a.label).join(', ') + ' — ', h('a', { href: '#/accounts' }, 'Kaynaklara git'))) : null,
+    h('div', { class: 'grid g4' },
+      stat(fmtNum(o.messages), 'Mesaj', 'erişebildiğin alanlarda'), stat(fmtNum(o.conversations), 'Konuşma', 'grup, kanal, DM, e-posta'),
+      stat(o.connected + ' / ' + o.accounts, 'Bağlı kaynak', 'senin hesapların'), stat(o.bySpace.length, 'Hafıza alanı', 'kişisel + ortak')),
+    h('div', { class: 'grid g2', style: 'margin-top:14px' },
+      h('div', { class: 'card' }, h('div', { class: 'row sb' }, h('h3', null, 'Son 14 gün'), h('span', { class: 'mut' }, 'günlük mesaj')),
+        h('div', { class: 'bars' }, days.map(d => h('div', { title: d.day + ': ' + d.n + ' mesaj' }, h('i', { style: `height:${Math.max(3, d.n / max * 100)}%` }), h('span', null, d.day.slice(8)))))),
+      h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:12px' }, 'Kaynaklara göre'),
+        o.bySource.length ? o.bySource.map(s => h('div', null, h('div', { class: 'row sb' }, h('span', null, SRC[s.source].name), h('b', null, fmtNum(s.n))),
+          h('div', { class: 'meter' }, h('i', { style: `width:${s.n / totalSrc * 100}%` })))) : h('div', { class: 'mut' }, 'Henüz mesaj yok.'))),
+    h('h3', { style: 'margin:26px 0 12px' }, 'Hafıza alanları'),
+    h('div', { class: 'grid g3' }, o.bySpace.map(s => h('div', { class: 'card' },
+      h('div', { class: 'row sb' }, h('b', null, s.name), h('span', { class: 'chip' }, s.kind === 'personal' ? 'Yalnız sen' : s.kind === 'company' ? 'Tüm şirket' : 'Ekip')),
+      h('div', { class: 'stat', style: 'margin-top:10px' }, h('div', { class: 'n' }, fmtNum(s.n)), h('div', { class: 'l' }, 'mesaj'))))),
+    h('div', { class: 'notice', style: 'margin-top:22px' }, h('span', { html: I.shield }), h('div', null,
+      h('b', null, 'Gizlilik kuralı: '), 'Birebir yazışmalar ve e-postalar yalnız sahibinin kişisel alanına düşer; yönetici dahil kimse göremez. Bir konuşma şirket hafızasına yalnız sahibinin açık kararıyla taşınır.')));
+}
+const stat = (n, l, s) => h('div', { class: 'card stat' }, h('div', { class: 'n' }, String(n)), h('div', { class: 'l' }, l), h('div', { class: 's' }, s));
+
+/* ---------- Kaynaklar ---------- */
+async function accounts(main) {
+  const list = await api('/accounts');
+  main.replaceChildren(
+    page('Kaynaklar', 'Mesajların geldiği hesaplar. Kişisel kaynaklar sen rıza verene kadar hiçbir şey toplamaz.',
+      h('button', { class: 'btn primary', onclick: () => addSource() }, h('span', { html: I.plus }), 'Kaynak ekle')),
+    list.length ? h('div', { class: 'grid g3' }, list.map(accountCard)) :
+      h('div', { class: 'card empty' }, h('b', null, 'Henüz bir kaynak yok'), 'WhatsApp, Telegram, Slack ya da e-posta ekleyerek başla.'));
+}
+function accountCard(a) {
+  const [label, tone] = STATUS[a.status] || [a.status, ''];
+  const personal = a.kind === 'whatsapp' || a.kind === 'email', sc = a.consent_scope;
+  const modeTxt = { all: 'hepsi', selected: 'seçtiklerim', none: 'hiçbiri' };
+  return h('div', { class: 'card acc' },
+    h('div', { class: 'top' }, h('span', { class: 'src ' + a.kind, html: SRC[a.kind].icon }), h('div', { class: 't' }, h('b', null, a.label), h('span', { class: 'mut' }, SRC[a.kind].name)),
+      h('span', { class: 'pill ' + tone }, label)),
+    a.status_detail && a.status === 'error' ? h('div', { class: 'mut', style: 'color:var(--bad)' }, a.status_detail) : null,
+    personal ? (a.consent_at ? h('div', { class: 'scope' },
+        a.kind === 'whatsapp' ? [h('span', { class: 'chip' }, 'DM: ' + modeTxt[sc.dm]), h('span', { class: 'chip' }, 'Gruplar: ' + modeTxt[sc.group]), h('span', { class: 'chip' }, 'Geçmiş: ' + (sc.history ? 'evet' : 'hayır'))]
+          : h('span', { class: 'chip' }, 'Rıza verildi · ' + fmtDate(a.consent_at)))
+      : h('div', { class: 'mut2' }, 'Rıza verilene kadar bu hesaptan hiçbir şey toplanmaz.')) : h('div', { class: 'mut2' }, 'Şirket botu — eklendiği gruplardaki mesajları ortak hafızaya yazar.'),
+    h('div', { class: 'acts' },
+      personal && !a.consent_at ? h('button', { class: 'btn primary sm', onclick: () => consentModal(a) }, 'Rıza ver') : null,
+      personal && a.consent_at ? h('button', { class: 'btn sm', onclick: () => consentModal(a) }, 'Kapsamı değiştir') : null,
+      a.kind === 'whatsapp' && a.consent_at ? h('button', { class: 'btn sm', onclick: () => qrModal(a) }, 'QR göster') : null,
+      personal && a.consent_at ? h('button', { class: 'btn sm danger', onclick: () => revokeModal(a) }, 'Rızayı geri çek') : null,
+      h('button', { class: 'btn sm danger', onclick: () => removeModal(a) }, 'Kaldır')));
+}
+
+function addSource() {
+  const body = h('div');
+  const m = modal(body);
+  const pickKind = () => {
+    body.replaceChildren(h('h2', null, 'Kaynak ekle'), h('p', { class: 'sub' }, 'Ne bağlamak istiyorsun?'),
+      h('div', { class: 'tiles' }, Object.entries(SRC).map(([k, s]) => h('div', { class: 'tile', onclick: () => form(k) },
+        h('span', { class: 'src ' + k, html: s.icon }), h('div', null, h('b', null, s.name), h('span', null, s.desc))))));
+  };
+  const form = (kind) => {
+    const f = {}; const field = (key, label, o = {}) => h('label', { class: 'f' }, h('span', null, label),
+      f[key] = h('input', { type: o.type || 'text', placeholder: o.ph || '', value: o.val || '', autocomplete: 'off' }), o.hint && h('small', null, o.hint));
+    const fields = [field('label', 'Ad', { ph: kind === 'whatsapp' ? 'Örn. Ali\'nin WhatsApp\'ı' : 'Örn. Şirket ' + SRC[kind].name, hint: 'Panelde göreceğin isim' })];
+    let space;
+    if (kind === 'telegram' || kind === 'slack') {
+      fields.push(field('botToken', 'Bot anahtarı', { type: 'password', hint: kind === 'telegram' ? 'BotFather\'dan aldığın token. Gruptaki mesajları görmesi için /setprivacy → Disable yap.' : 'xoxb- ile başlayan bot token' }));
+      if (kind === 'slack') fields.push(field('appToken', 'Uygulama anahtarı (Socket Mode)', { type: 'password', hint: 'xapp- ile başlayan token' }));
+      space = h('select', null, ME.is_admin ? h('option', { value: 'company' }, 'Ortak şirket hafızası') : null, h('option', { value: 'personal' }, 'Yalnız benim kişisel alanım'));
+      fields.push(h('label', { class: 'f' }, h('span', null, 'Mesajlar nereye yazılsın?'), space));
+    }
+    if (kind === 'email') fields.push(field('host', 'IMAP sunucusu', { ph: 'imap.sirket.com' }), field('user', 'Kullanıcı adı', { ph: 'ali@sirket.com' }),
+      field('password', 'Parola / uygulama şifresi', { type: 'password', hint: 'Şifreli saklanır. Gmail için uygulama şifresi gerekir.' }), field('sinceDays', 'Kaç günlük geçmiş alınsın?', { type: 'number', val: '90' }));
+    const info = kind === 'whatsapp' ? 'Eklendikten sonra rıza kapsamını seçip QR kodunu telefonundan okutacaksın.' : kind === 'email' ? 'Eklendikten sonra rıza vermeden e-postaların okunmaz.' : null;
+    const save = h('button', { class: 'btn primary', onclick: async () => {
+      const v = (k) => f[k] && f[k].value.trim(); const base = { kind, label: v('label') };
+      let payload = base;
+      if (kind === 'telegram') payload = { ...base, space: space.value, secrets: { botToken: v('botToken') } };
+      if (kind === 'slack') payload = { ...base, space: space.value, secrets: { botToken: v('botToken'), appToken: v('appToken') } };
+      if (kind === 'email') payload = { ...base, config: { host: v('host'), user: v('user'), sinceDays: Number(v('sinceDays')) || 90 }, secrets: { password: f.password.value } };
+      const r = await act(() => api('/accounts', { method: 'POST', body: payload }), 'Kaynak eklendi'); m.close();
+      if (r.next) consentModal({ id: r.id, kind, label: r.label }); else route();
+    } }, 'Ekle');
+    body.replaceChildren(h('div', { class: 'row', style: 'margin-bottom:10px' }, h('span', { class: 'src ' + kind, html: SRC[kind].icon }), h('h2', { style: 'margin:0' }, SRC[kind].name + ' ekle')),
+      info && h('div', { class: 'notice' }, h('span', { html: I.info }), info), fields,
+      h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: pickKind }, 'Geri'), save));
+  };
+  pickKind();
+}
+
+function consentModal(a) {
+  const wa = a.kind === 'whatsapp'; const sc = a.consent_scope || { dm: 'selected', group: 'all', history: false };
+  const sel = { dm: sc.dm, group: sc.group }; let history = sc.history;
+  const group = (key, title, opts) => h('div', { style: 'margin-bottom:16px' }, h('b', { style: 'display:block;margin-bottom:8px' }, title),
+    opts.map(([val, t, d]) => h('label', { class: 'opt' }, h('input', { type: 'radio', name: key, checked: sel[key] === val, onchange: () => sel[key] = val }), h('div', null, h('b', null, t), h('span', null, d)))));
+  const body = h('div', null,
+    h('h2', null, wa ? 'WhatsApp için rızan' : 'E-posta için rızan'),
+    h('p', { class: 'sub' }, wa ? 'Neyin toplanacağına sen karar verirsin. İstediğin an değiştirebilir ya da geri çekebilirsin.' : 'Onaylarsan bu kutudaki e-postalar şirket sistemine okunur. İstediğin an geri çekebilirsin.'),
+    wa ? [group('dm', 'Birebir sohbetler', [['selected', 'Ben seçerim', 'Sohbetler listelenir ama yalnız işaretlediklerinin mesajı saklanır.'], ['all', 'Hepsi', 'Tüm birebir sohbetler kişisel alanında saklanır. Başkası göremez.'], ['none', 'Hiçbiri', 'Birebir sohbetlere hiç dokunulmaz.']]),
+      group('group', 'Gruplar', [['all', 'Hepsi', 'Üye olduğun tüm gruplar kaydedilir.'], ['selected', 'Ben seçerim', 'Yalnız işaretlediğin gruplar kaydedilir.'], ['none', 'Hiçbiri', 'Gruplara dokunulmaz.']]),
+      h('label', { class: 'opt' }, h('input', { type: 'checkbox', checked: history, onchange: (e) => history = e.target.checked }), h('div', null, h('b', null, 'Eski mesajları da al'), h('span', null, 'Bağlanma sırasında telefonun gönderdiği mesaj geçmişi içe aktarılır.')))] : null,
+    h('div', { class: 'notice' }, h('span', { html: I.shield }), 'Karşındaki kişilerin mesajları da kayda girer. Onlara bundan haberdar olduklarından emin ol.'),
+    h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => m.close() }, 'Vazgeç'), h('button', { class: 'btn primary', onclick: async () => {
+      await act(() => api(`/accounts/${a.id}/consent`, { method: 'POST', body: wa ? { dm: sel.dm, group: sel.group, history } : { dm: 'none', group: 'none', history: false } }), 'Rıza kaydedildi');
+      m.close(); if (wa && !a.consent_scope) qrModal(a); else route();
+    } }, 'Rızamı onaylıyorum')));
+  const m = modal(body);
+}
+
+function revokeModal(a) {
+  let purge = true;
+  const m = modal(h('div', null, h('h2', null, 'Rızayı geri çek'), h('p', { class: 'sub' }, `${a.label} durdurulur ve bağlantı anahtarları silinir. Toplanmış kayıtlar için bir seçim yapman gerekiyor:`),
+    h('label', { class: 'opt' }, h('input', { type: 'radio', name: 'p', checked: true, onchange: () => purge = true }), h('div', null, h('b', null, 'Topladıklarını da sil'), h('span', null, 'Bu hesaptan gelen tüm konuşmalar ve mesajlar kalıcı olarak silinir.'))),
+    h('label', { class: 'opt' }, h('input', { type: 'radio', name: 'p', onchange: () => purge = false }), h('div', null, h('b', null, 'Kayıtlar kalsın'), h('span', null, 'Yeni mesaj gelmez; eskiler hafızada kalır.'))),
+    h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => m.close() }, 'Vazgeç'),
+      h('button', { class: 'btn danger', onclick: async () => { await act(() => api(`/accounts/${a.id}/consent`, { method: 'DELETE', body: { purge } }), 'Rıza geri çekildi'); m.close(); route(); } }, 'Geri çek'))));
+}
+function removeModal(a) {
+  const m = modal(h('div', null, h('h2', null, 'Kaynağı kaldır'), h('p', { class: 'sub' }, `“${a.label}” ve ondan toplanan tüm mesajlar kalıcı olarak silinecek. Bu geri alınamaz.`),
+    h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => m.close() }, 'Vazgeç'),
+      h('button', { class: 'btn danger', onclick: async () => { await act(() => api('/accounts/' + a.id, { method: 'DELETE' }), 'Kaynak kaldırıldı'); m.close(); route(); } }, 'Kalıcı olarak sil'))));
+}
+function qrModal(a) {
+  const box = h('div', { class: 'qrbox' }, h('span', { class: 'mut' }, 'QR hazırlanıyor…'));
+  const status = h('p', { class: 'mut', style: 'margin:6px 0 0' });
+  const m = modal(h('div', null, h('h2', null, 'WhatsApp\'ı bağla'), h('p', { class: 'sub' }, 'Telefonunda WhatsApp → Ayarlar → Bağlı cihazlar → Cihaz bağla, ardından bu kodu okut.'), box, status,
+    h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => m.close() }, 'Kapat'))));
+  let alive = true; m.el.onclose = () => { alive = false; route(); };
+  const tick = async () => {
+    if (!alive) return;
+    try {
+      const r = await api(`/accounts/${a.id}/qr`);
+      if (r.status === 'connected') { box.replaceChildren(h('div', { class: 'empty', style: 'color:#111' }, h('b', { style: 'color:#15803d' }, 'Bağlandı ✓'), 'Mesajlar artık kapsamına göre toplanıyor.')); status.textContent = ''; return; }
+      if (r.qr) box.replaceChildren(h('img', { src: r.qr, alt: 'WhatsApp eşleştirme QR kodu' })); status.textContent = 'Durum: ' + (STATUS[r.status] ? STATUS[r.status][0] : r.status) + ' · kod kendiliğinden yenilenir';
+    } catch (e) { status.textContent = e.message; }
+    setTimeout(tick, 2500);
+  };
+  tick();
+}
+
+/* ---------- Konuşmalar ---------- */
+async function conversations(main) {
+  const [list, spaces] = await Promise.all([api('/conversations'), api('/spaces')]); SPACES = spaces;
+  const spName = Object.fromEntries(spaces.map(s => [s.id, s]));
+  let src = 'all', q = '';
+  const listEl = h('div', { class: 'card list' });
+  const draw = () => {
+    const rows = list.filter(c => (src === 'all' || c.source === src) && (!q || (c.title || '').toLowerCase().includes(q)));
+    listEl.replaceChildren(...(rows.length ? rows.map(c => h('div', { class: 'item', onclick: () => openConv(c, spName) },
+      h('span', { class: 'src ' + c.source, html: SRC[c.source].icon }),
+      h('div', { class: 't' }, h('b', null, c.title || '(adsız)'), h('span', { class: 'mut' }, ({ dm: 'Birebir', group: 'Grup', channel: 'Kanal', email: 'E-posta' })[c.kind] + ' · ' + ((spName[c.space_id] || {}).name || 'Alan #' + c.space_id))),
+      !c.capture ? h('span', { class: 'pill warn' }, 'Toplanmıyor') : null)) : [h('div', { class: 'empty' }, h('b', null, 'Konuşma bulunamadı'), 'Filtreleri değiştirmeyi dene.')]));
+  };
+  main.replaceChildren(page('Konuşmalar', 'Erişebildiğin tüm konuşmalar. Bir konuşmaya tıklayınca mesajları açılır.'),
+    h('div', { class: 'toolbar' }, h('input', { type: 'search', placeholder: 'Konuşma ara…', oninput: (e) => { q = e.target.value.toLowerCase(); draw(); } }),
+      h('div', { class: 'seg' }, [['all', 'Tümü'], ...Object.entries(SRC).map(([k, s]) => [k, s.name])].map(([k, t]) => h('button', { class: k === 'all' ? 'on' : '', onclick: (e) => { src = k; e.target.parentNode.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === e.target)); draw(); } }, t)))), listEl);
+  draw();
+}
+async function openConv(c, spName) {
+  const body = h('div', { class: 'db' }, h('span', { class: 'mut' }, 'Yükleniyor…'));
+  const foot = h('div', { class: 'df' });
+  const d = drawer(h('div', null, h('h2', { style: 'font-size:18px' }, c.title || '(adsız)'), h('span', { class: 'mut' }, SRC[c.source].name + ' · ' + ((spName[c.space_id] || {}).name || ''))), body, foot);
+  if (c.mine) {
+    foot.append(h('button', { class: 'btn sm', onclick: async () => { await act(() => api(`/conversations/${c.id}/capture`, { method: 'POST', body: { capture: !c.capture, purge: false } }), c.capture ? 'Toplama durduruldu' : 'Toplama açıldı'); d.close(); route(); } }, c.capture ? 'Toplamayı durdur' : 'Toplamayı başlat'));
+    const personal = (spName[c.space_id] || {}).kind === 'personal';
+    if (personal) foot.append(h('button', { class: 'btn sm primary', onclick: () => moveModal(c, d) }, 'Şirket hafızasına taşı'));
+  }
+  try {
+    const msgs = await api(`/conversations/${c.id}/messages`);
+    body.replaceChildren(...(msgs.length ? msgs.map(m => h('div', { class: 'msg' + (m.from_me ? ' me' : '') }, h('div', { class: 'who' }, m.from_me ? 'Ben' : (m.sender_name || 'Bilinmiyor')),
+      m.subject ? h('div', { class: 'sj' }, m.subject) : null, h('div', { style: 'white-space:pre-wrap' }, m.body), h('div', { class: 'tm' }, fmtDate(m.sent_at)))) :
+      [h('div', { class: 'empty' }, h('b', null, 'Saklanmış mesaj yok'), c.capture ? 'Bu konuşmaya henüz mesaj gelmedi.' : 'Bu konuşma toplanmadığı için mesajları saklanmıyor.')]));
+    body.scrollTop = body.scrollHeight;
+  } catch (e) { body.replaceChildren(h('div', { class: 'empty' }, e.message)); }
+}
+function moveModal(c, d) {
+  const targets = SPACES.filter(s => s.kind !== 'personal'); const sel = h('select', null, targets.map(s => h('option', { value: s.id }, s.name)));
+  const m = modal(h('div', null, h('h2', null, 'Şirket hafızasına taşı'), h('p', { class: 'sub' }, `“${c.title}” konuşmasının geçmişi ve sonraki mesajları seçtiğin alanın tüm üyeleri tarafından görülür ve aranabilir.`),
+    h('label', { class: 'f' }, h('span', null, 'Hedef alan'), sel),
+    h('div', { class: 'notice' }, h('span', { html: I.shield }), 'Bu işlem karşındaki kişilerin mesajlarını da paylaşır. Emin değilsen taşıma.'),
+    h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => m.close() }, 'Vazgeç'),
+      h('button', { class: 'btn primary', onclick: async () => { await act(() => api(`/conversations/${c.id}/move`, { method: 'POST', body: { space: Number(sel.value) } }), 'Konuşma taşındı'); m.close(); d.close(); route(); } }, 'Taşı'))));
+}
+
+/* ---------- Arama ---------- */
+async function searchView(main) {
+  const out = h('div', { class: 'list card hidden' }); const inp = h('input', { type: 'search', placeholder: 'Örn. lansman tarihi, teklif, fatura…', autofocus: true });
+  const srcSel = h('select', { style: 'max-width:180px' }, h('option', { value: '' }, 'Tüm kaynaklar'), Object.entries(SRC).map(([k, s]) => h('option', { value: k }, s.name)));
+  const hl = (s) => (s || '').split(/(«[^»]*»)/).map(p => p.startsWith('«') ? h('mark', null, p.slice(1, -1)) : p);
+  const run = async () => {
+    const v = inp.value.trim(); if (!v) return;
+    const hits = await act(() => api('/search?q=' + encodeURIComponent(v) + (srcSel.value ? '&source=' + srcSel.value : '')));
+    out.classList.remove('hidden');
+    out.replaceChildren(...(hits.length ? hits.map(x => h('div', { class: 'item', style: 'align-items:flex-start;cursor:default' }, h('span', { class: 'src ' + x.source, html: SRC[x.source].icon }),
+      h('div', { class: 't' }, h('div', { class: 'row sb' }, h('b', null, x.conversation_title || SRC[x.source].name), h('span', { class: 'mut' }, fmtDate(x.sent_at))),
+        h('div', { class: 'mut' }, (x.sender_name || '') + ' · ' + x.space_name), h('div', { style: 'margin-top:4px;white-space:normal' }, hl(x.snippet))))) :
+      [h('div', { class: 'empty' }, h('b', null, 'Sonuç yok'), 'Başka kelimelerle dene. Yalnız erişimin olan alanlarda aranır.')]));
+  };
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+  main.replaceChildren(page('Ara', 'Kişisel alanın ve üye olduğun ortak alanlardaki tüm mesajlarda tam metin arama.'),
+    h('div', { class: 'toolbar' }, h('div', { style: 'flex:1;min-width:240px;max-width:520px' }, inp), srcSel, h('button', { class: 'btn primary', onclick: run }, h('span', { html: I.search }), 'Ara')), out);
+}
+
+/* ---------- Rıza geçmişi ---------- */
+async function consentLog(main) {
+  const [log, accs] = await Promise.all([api('/consent-log'), api('/accounts')]); const name = Object.fromEntries(accs.map(a => [a.id, a.label]));
+  const act_ = { grant: ['Rıza verildi', 'ok'], scope_change: ['Kapsam değişti', 'warn'], revoke: ['Rıza geri çekildi', 'bad'] };
+  main.replaceChildren(page('Rıza geçmişi', 'Senin hesapların için verilen, değiştirilen ve geri çekilen tüm rızalar. Bu kayıt silinmez.'),
+    log.length ? h('div', { class: 'card', style: 'overflow:auto' }, h('table', null, h('thead', null, h('tr', null, ['Zaman', 'Kaynak', 'İşlem', 'Ayrıntı'].map(t => h('th', null, t)))),
+      h('tbody', null, log.map(l => h('tr', null, h('td', { class: 'mut2' }, fmtDate(l.at)), h('td', null, name[l.account_id] || 'Hesap #' + l.account_id),
+        h('td', null, h('span', { class: 'pill ' + act_[l.action][1] }, act_[l.action][0])),
+        h('td', { class: 'mut2' }, l.scope ? `DM: ${l.scope.dm}, grup: ${l.scope.group}, geçmiş: ${l.scope.history ? 'evet' : 'hayır'}` : (l.purged ? 'Kayıtlar silindi' : 'Kayıtlar korundu'))))))) :
+      h('div', { class: 'card empty' }, h('b', null, 'Henüz kayıt yok'), 'Bir kaynağa rıza verdiğinde burada görünür.'));
+}
+
+/* ---------- Ekip (yönetici) ---------- */
+async function team(main) {
+  const users = await api('/users');
+  main.replaceChildren(page('Ekip', 'Sisteme erişebilen kişiler. Her kişinin kendi kişisel alanı vardır; yönetici onun içeriğini göremez.',
+    h('button', { class: 'btn primary', onclick: () => addUser() }, h('span', { html: I.plus }), 'Kişi ekle')),
+    h('div', { class: 'card', style: 'overflow:auto' }, h('table', null, h('thead', null, h('tr', null, ['Kişi', 'E-posta', 'Rol', 'Kaynak'].map(t => h('th', null, t)))),
+      h('tbody', null, users.map(u => h('tr', null, h('td', null, h('div', { class: 'row' }, h('span', { class: 'avatar', style: 'width:30px;height:30px;font-size:12px' }, initials(u.name)), h('b', null, u.name))),
+        h('td', { class: 'mut2' }, u.email || '—'), h('td', null, h('span', { class: 'pill ' + (u.is_admin ? 'ok' : '') }, u.is_admin ? 'Yönetici' : 'Üye')), h('td', null, String(u.accounts))))))));
+}
+function addUser() {
+  const name = h('input', { type: 'text', placeholder: 'Ad Soyad' }), email = h('input', { type: 'email', placeholder: 'ad@sirket.com' }), admin = h('input', { type: 'checkbox' });
+  const body = h('div', null, h('h2', null, 'Kişi ekle'), h('p', { class: 'sub' }, 'Kişiye özel bir erişim anahtarı oluşturulur. Anahtar yalnız bir kez gösterilir.'),
+    h('label', { class: 'f' }, h('span', null, 'Ad'), name), h('label', { class: 'f' }, h('span', null, 'E-posta (isteğe bağlı)'), email),
+    h('label', { class: 'opt' }, admin, h('div', null, h('b', null, 'Yönetici'), h('span', null, 'Kullanıcı ekleyebilir, şirket botlarını yönetir. Kişisel alanları göremez.'))),
+    h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => m.close() }, 'Vazgeç'), h('button', { class: 'btn primary', onclick: async () => {
+      const r = await act(() => api('/users', { method: 'POST', body: { name: name.value.trim(), email: email.value.trim() || undefined, isAdmin: admin.checked } }));
+      body.replaceChildren(h('h2', null, r.user.name + ' eklendi'), h('p', { class: 'sub' }, 'Bu anahtarı kişiye güvenli bir yoldan ilet. Bir daha gösterilmeyecek.'),
+        h('div', { class: 'tokenbox' }, h('span', { class: 'mono', style: 'flex:1' }, r.token), h('button', { class: 'btn sm', onclick: () => { navigator.clipboard.writeText(r.token); toast('Kopyalandı'); } }, 'Kopyala')),
+        h('div', { class: 'foot' }, h('button', { class: 'btn primary', onclick: () => { m.close(); route(); } }, 'Tamam')));
+    } }, 'Oluştur')));
+  const m = modal(body);
+}
+
+/* ---------- başlangıç ---------- */
+async function boot() {
+  try { ME = await api('/me'); } catch { TOKEN = ''; try { sessionStorage.removeItem('t'); } catch {} $('#shell').classList.add('hidden'); $('#login').classList.remove('hidden'); return; }
+  try { SPACES = await api('/spaces'); } catch {}
+  $('#login').classList.add('hidden'); $('#shell').classList.remove('hidden');
+  $('#av').textContent = initials(ME.name); $('#uname').textContent = ME.name; $('#urole').textContent = ME.is_admin ? 'Yönetici' : 'Üye'; route();
+}
+$('#loginBtn').onclick = async () => {
+  TOKEN = $('#tok').value.trim(); $('#loginErr').textContent = '';
+  try { await api('/me'); try { sessionStorage.setItem('t', TOKEN); } catch {} boot(); } catch (e) { $('#loginErr').textContent = 'Anahtar geçersiz.'; }
+};
+$('#tok').addEventListener('keydown', e => { if (e.key === 'Enter') $('#loginBtn').click(); });
+$('#logout').onclick = () => { try { sessionStorage.removeItem('t'); } catch {} TOKEN = ''; location.hash = ''; boot(); };
+boot();
+</script>
+</body>
+</html>
