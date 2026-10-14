@@ -1,0 +1,13 @@
+# docker compose --profile https up -d   (docker-compose.yml içindeki caddy servisi bu dosyayı okur)
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:3000
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}

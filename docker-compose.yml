@@ -7,20 +7,50 @@ services:
       POSTGRES_DB: incompany
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d incompany"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   app:
     build: .
     restart: unless-stopped
-    depends_on: [db]
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/incompany
       APP_SECRET: ${APP_SECRET:?.env içinde APP_SECRET gerekli (en az 24 karakter)}
+      # Anahtar rotasyonu sırasında eski değer(ler); bkz. docs/isletim.md
+      APP_SECRET_PREVIOUS: ${APP_SECRET_PREVIOUS:-}
+      # Caddy profilini kullanıyorsan .env'de TRUST_PROXY=1 yap (istemci IP'si hız sınırı için doğru okunur).
+      TRUST_PROXY: ${TRUST_PROXY:-0}
     ports:
-      # Yalnız yerel makineye açık; internete HTTPS ters vekil (Caddy/nginx) üzerinden çıkın.
+      # Yalnız yerel makineye açık; internete HTTPS ters vekil (aşağıdaki Caddy ya da kendi nginx'in) üzerinden çıkın.
       - "127.0.0.1:3000:3000"
     volumes:
       - appdata:/data
 
+  # Otomatik HTTPS (Let's Encrypt): docker compose --profile https up -d
+  # .env içinde DOMAIN=hafiza.sirketim.com.tr olmalı; alan adı bu sunucuya yönlenmiş, 80 ve 443 açık olmalı.
+  caddy:
+    image: caddy:2
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on: [app]
+    environment:
+      DOMAIN: ${DOMAIN:?.env içinde DOMAIN gerekli}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   pgdata:
   appdata:
+  caddy_data:
+  caddy_config:
