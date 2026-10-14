@@ -1,6 +1,6 @@
 {
   "name": "incompany",
-  "version": "1.0.0",
+  "version": "0.1.11",
   "description": "Şirket içi zihin sistemi",
   "scripts": {
     "build": "tsc -p .",
