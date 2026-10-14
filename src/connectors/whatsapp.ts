@@ -1,9 +1,9 @@
 import makeWASocket, {
   Browsers, DisconnectReason, extractMessageContent, isJidGroup, jidNormalizedUser,
-  useMultiFileAuthState, type WAMessage, type WASocket,
+  useMultiFileAuthState, type WAMessage, type WAMessageKey, type WAMessageUpdate, type WASocket,
 } from 'baileys';
 import { rm } from 'node:fs/promises';
-import type { IncomingMessage } from '../core/ingest.js';
+import { deleteIncomingMessage, type IncomingMessage } from '../core/ingest.js';
 import type { ConnectorFactory } from './types.js';
 
 function messageText(m: WAMessage): string {
@@ -45,6 +45,30 @@ export function whatsappToIncoming(
     body,
     raw: { key: m.key, pushName: m.pushName, messageTimestamp: ts },
   };
+}
+
+/** WAMessageStubType.REVOKE ("bu mesaj silindi"). */
+const STUB_REVOKE = 1;
+
+export type WhatsappUpdate =
+  | { type: 'delete'; conversation: string; messageId: string }
+  | { type: 'edit'; message: IncomingMessage };
+
+/**
+ * Baileys düzenleme ve silmeleri `messages.update` olarak bildirir: silme `messageStubType = REVOKE`,
+ * düzenleme `message.editedMessage.message`. Diğer güncellemeler (okundu, tepki vb.) null döner.
+ */
+export function whatsappUpdateToAction(u: WAMessageUpdate, names: { chat?: string | null; self?: string | null } = {}): WhatsappUpdate | null {
+  const jid = u.key.remoteJid;
+  if (!jid || !u.key.id) return null;
+  if (u.update.messageStubType === STUB_REVOKE) {
+    return { type: 'delete', conversation: jidNormalizedUser(jid), messageId: u.key.id };
+  }
+  const edited = u.update.message?.editedMessage?.message;
+  if (!edited) return null;
+  const incoming = whatsappToIncoming(
+    { key: u.key, message: edited, messageTimestamp: u.update.messageTimestamp } as WAMessage, names);
+  return incoming ? { type: 'edit', message: { ...incoming, edit: true } } : null;
 }
 
 /**
@@ -123,6 +147,27 @@ export const whatsappConnector: ConnectorFactory = (ctx) => {
       await handle(messages);
     });
     sock.ev.on('messages.upsert', ({ messages }) => handle(messages));
+    sock.ev.on('messages.update', async (updates) => {
+      for (const u of updates) {
+        try {
+          const jid = u.key.remoteJid;
+          const chat = jid ? (isJidGroup(jid) ? await groupName(jid) : chatNames.get(jidNormalizedUser(jid)) ?? null) : null;
+          const action = whatsappUpdateToAction(u, { chat, self: sock?.user?.name ?? null });
+          if (action?.type === 'delete') await deleteIncomingMessage(ctx.db, ctx.account.id, action.conversation, action.messageId);
+          if (action?.type === 'edit') await ctx.ingest(action.message);
+        } catch (err) {
+          ctx.log.error({ err }, 'whatsapp mesaj güncellemesi işlenemedi');
+        }
+      }
+    });
+    sock.ev.on('messages.delete', async (d) => {
+      if (!('keys' in d)) return;
+      for (const k of d.keys as WAMessageKey[]) {
+        if (!k.remoteJid || !k.id) continue;
+        await deleteIncomingMessage(ctx.db, ctx.account.id, jidNormalizedUser(k.remoteJid), k.id)
+          .catch((err) => ctx.log.error({ err }, 'whatsapp mesaj silme işlenemedi'));
+      }
+    });
   };
 
   return {

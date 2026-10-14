@@ -5,6 +5,12 @@ import type { ConnectorFactory } from './types.js';
 
 const addr = (a: ParsedMail['from']) => a?.value?.[0];
 
+/** To ve Cc adresleri; kendi gönderdiğim bir e-postada "beni kaydetme" kontrolü için kullanılır. */
+const recipients = (mail: ParsedMail): string[] => {
+  const lists = [mail.to, mail.cc].flatMap((x) => (x ? (Array.isArray(x) ? x : [x]) : []));
+  return lists.flatMap((l) => l.value.map((v) => v.address).filter((a): a is string => Boolean(a)));
+};
+
 export function emailToIncoming(mail: ParsedMail, fallbackId: string, ownAddress?: string): IncomingMessage | null {
   const body = (mail.text ?? (mail.html ? String(mail.html).replace(/<[^>]+>/g, ' ') : '')).replace(/\s+\n/g, '\n').trim();
   const subject = mail.subject?.trim() || null;
@@ -21,6 +27,7 @@ export function emailToIncoming(mail: ParsedMail, fallbackId: string, ownAddress
     senderExternalId: from?.address ?? null,
     senderName: from?.name || from?.address || null,
     fromMe,
+    counterparts: recipients(mail),
     sentAt: mail.date ?? new Date(),
     subject,
     body,

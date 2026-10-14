@@ -1,7 +1,8 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Logger } from 'pino';
-import { accountSecrets, getAccount, listAccounts, needsConsent, setAccountStatus, type AccountKind } from '../core/accounts.js';
+import { accountSecrets, getAccount, listAccounts, needsConsent, setAccountStatus, type AccountKind, type SecretKey } from '../core/accounts.js';
+import { getConsentText } from '../core/settings.js';
 import { ingestMessage } from '../core/ingest.js';
 import type { Db } from '../db/client.js';
 import { emailConnector } from './email.js';
@@ -21,7 +22,7 @@ const factories: Record<AccountKind, ConnectorFactory> = {
 export class ConnectorManager {
   private running = new Map<number, Connector>();
 
-  constructor(private db: Db, private appSecret: string, private dataDir: string, private log: Logger) {}
+  constructor(private db: Db, private appSecret: SecretKey, private dataDir: string, private log: Logger) {}
 
   async startAll(): Promise<void> {
     for (const acc of await listAccounts(this.db, { enabled: true })) {
@@ -33,9 +34,17 @@ export class ConnectorManager {
     await this.stop(accountId);
     const account = await getAccount(this.db, accountId);
     if (!account || !account.enabled) return;
-    if (needsConsent(account.kind) && !account.consent_at) {
-      await setAccountStatus(this.db, account.id, 'awaiting_consent', 'Hesap sahibi rıza vermeden başlatılmaz');
-      return;
+    if (needsConsent(account.kind)) {
+      // Rıza yoksa ya da eski aydınlatma metnine verilmişse başlatılmaz; yeniden onay gerekir.
+      const text = await getConsentText(this.db);
+      if (!account.consent_at) {
+        await setAccountStatus(this.db, account.id, 'awaiting_consent', 'Hesap sahibi rıza vermeden başlatılmaz');
+        return;
+      }
+      if ((account.consent_text_version ?? 0) !== text.version) {
+        await setAccountStatus(this.db, account.id, 'awaiting_consent', 'Aydınlatma metni güncellendi; yeniden onay gerekli');
+        return;
+      }
     }
     const dataDir = join(this.dataDir, account.kind, String(account.id));
     await mkdir(dataDir, { recursive: true });
