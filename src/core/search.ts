@@ -18,6 +18,7 @@ export interface SearchOptions {
   spaceId?: number;
   source?: 'whatsapp' | 'telegram' | 'slack' | 'email';
   limit?: number;
+  offset?: number;
 }
 
 /**
@@ -43,8 +44,8 @@ export async function search(db: Db, userId: number, q: string, opts: SearchOpti
       WHERE ($3::bigint IS NULL OR m.space_id = $3)
         AND ($4::text IS NULL OR a.kind = $4)
       ORDER BY rank DESC, m.sent_at DESC
-      LIMIT $5`,
-    [userId, q, opts.spaceId ?? null, opts.source ?? null, limit]);
+      LIMIT $5 OFFSET $6`,
+    [userId, q, opts.spaceId ?? null, opts.source ?? null, limit, Math.max(opts.offset ?? 0, 0)]);
   return rows.map((r) => ({ ...r, id: Number(r.id), space_id: Number(r.space_id),
     conversation_id: Number(r.conversation_id), rank: Number(r.rank) }));
 }

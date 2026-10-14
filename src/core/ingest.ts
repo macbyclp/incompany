@@ -1,5 +1,6 @@
 import type { Db } from '../db/client.js';
 import { needsConsent, type AccountKind, type CaptureMode, type ConsentScope } from './accounts.js';
+import { isExcluded } from './privacy.js';
 import { personalSpaceId } from './users.js';
 
 export type ConversationKind = 'dm' | 'group' | 'channel' | 'email';
@@ -15,6 +16,13 @@ export interface IncomingMessage {
   subject?: string | null;
   body: string;
   raw?: unknown;
+  /** true: kaynakta düzenlenmiş mesaj; kayıtlı içerik yerinde güncellenir (önceki sürüm saklanmaz). */
+  edit?: boolean;
+  /**
+   * Konuşmanın diğer tarafları (ör. e-posta alıcıları). Hesap sahibinin kendi gönderdiği bir
+   * mesajda bunlardan biri "beni kaydetme" listesindeyse mesaj kaydedilmez.
+   */
+  counterparts?: string[];
 }
 
 interface AccountRow {
@@ -24,18 +32,34 @@ interface AccountRow {
   default_space_id: number;
   consent_at: Date | null;
   consent_scope: ConsentScope | null;
+  consent_text_version: number | null;
+  /** Güncel aydınlatma metni sürümü (settings); kayıt yoksa 1. */
+  text_version: number | null;
+  /** Şirket botları için varsayılan saklama süresi (gün). */
+  company_retention: number | null;
 }
 
 /**
- * Bu konuşma türü için hesap sahibinin verdiği izin. Kişisel kaynaklarda rıza yoksa 'none':
- * bağlayıcı yanlışlıkla çalışsa bile hiçbir şey yazılmaz. Botlar (Telegram/Slack) şirket
- * kaynağıdır; bir kişinin hesabı olmadığı için kapsam sormaz.
+ * Bu konuşma türü için hesap sahibinin verdiği izin. Kişisel kaynaklarda rıza yoksa ya da rıza
+ * eski bir aydınlatma metni sürümüne verilmişse 'none': bağlayıcı yanlışlıkla çalışsa bile
+ * hiçbir şey yazılmaz. Botlar (Telegram/Slack) şirket kaynağıdır; bir kişinin hesabı olmadığı için
+ * kapsam sormaz.
  */
-export function captureMode(account: AccountRow, kind: ConversationKind): CaptureMode {
+export function captureMode(
+  account: Pick<AccountRow, 'kind' | 'consent_at' | 'consent_scope' | 'consent_text_version'>,
+  kind: ConversationKind, currentTextVersion?: number,
+): CaptureMode {
   if (!needsConsent(account.kind)) return 'all';
   if (!account.consent_at || !account.consent_scope) return 'none';
+  if (currentTextVersion !== undefined && (account.consent_text_version ?? 0) !== currentTextVersion) return 'none';
   if (kind === 'email') return 'all';
   return kind === 'dm' ? account.consent_scope.dm : account.consent_scope.group;
+}
+
+/** Bu hesap için geçerli saklama süresi (gün); null = süresiz. */
+export function retentionDays(account: Pick<AccountRow, 'kind' | 'consent_scope' | 'company_retention'>): number | null {
+  if (needsConsent(account.kind)) return account.consent_scope?.retention_days ?? null;
+  return account.company_retention ?? null;
 }
 
 /**
@@ -56,13 +80,25 @@ export async function ingestMessage(db: Db, accountId: number, msg: IncomingMess
 
   return db.transaction(async (tx) => {
     const acc = await tx.query<AccountRow>(
-      `SELECT id, kind, owner_user_id, default_space_id, consent_at, consent_scope
+      `SELECT id, kind, owner_user_id, default_space_id, consent_at, consent_scope, consent_text_version,
+              coalesce((SELECT (value->>'version')::int FROM settings WHERE key = 'consent_text'), 1) AS text_version,
+              (SELECT (value #>> '{}')::int FROM settings WHERE key = 'company_retention_days') AS company_retention
          FROM accounts WHERE id = $1 AND enabled`, [accountId]);
     const account = acc.rows[0];
     if (!account) throw new Error(`Hesap bulunamadı ya da kapalı: ${accountId}`);
 
-    const mode = captureMode(account, msg.conversation.kind);
+    const mode = captureMode(account, msg.conversation.kind, Number(account.text_version ?? 1));
     if (mode === 'none') return false;
+
+    // "Beni kaydetme" listesi: gönderen, birebir sohbetin karşı tarafı ya da (kendi mesajımda) alıcılar.
+    if (await isExcluded(tx, [
+      msg.senderExternalId,
+      msg.conversation.kind === 'dm' ? msg.conversation.externalId : null,
+      ...(msg.fromMe ? msg.counterparts ?? [] : []),
+    ])) return false;
+
+    const days = retentionDays({ ...account, company_retention: account.company_retention == null ? null : Number(account.company_retention) });
+    if (days !== null && msg.sentAt.getTime() < Date.now() - days * 86_400_000) return false;
 
     let conv = await tx.query<{ id: number; space_id: number; title: string | null; capture: boolean }>(
       'SELECT id, space_id, title, capture FROM conversations WHERE account_id = $1 AND external_id = $2',
@@ -84,17 +120,45 @@ export async function ingestMessage(db: Db, accountId: number, msg: IncomingMess
     const { id: conversationId, space_id: spaceId, capture } = conv.rows[0]!;
     if (!capture) return false;
 
-    const inserted = await tx.query(
-      `INSERT INTO messages(conversation_id, space_id, external_id, sender_external_id,
-         sender_name, from_me, sent_at, subject, body, raw)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       ON CONFLICT (conversation_id, external_id) DO NOTHING
-       RETURNING id`,
-      [conversationId, spaceId, msg.externalId, msg.senderExternalId ?? null,
-        msg.senderName ?? null, msg.fromMe ?? false, msg.sentAt, msg.subject ?? null, body,
-        msg.raw === undefined ? null : JSON.stringify(msg.raw)]);
-    return inserted.rows.length > 0;
+    const raw = msg.raw === undefined ? null : JSON.stringify(msg.raw);
+    let stored = false;
+    if (msg.edit) {
+      const updated = await tx.query(
+        `UPDATE messages SET body = $3, subject = $4, raw = $5, edited_at = now()
+          WHERE conversation_id = $1 AND external_id = $2 RETURNING id`,
+        [conversationId, msg.externalId, body, msg.subject ?? null, raw]);
+      stored = updated.rows.length > 0;
+    }
+    if (!stored) {
+      const inserted = await tx.query(
+        `INSERT INTO messages(conversation_id, space_id, external_id, sender_external_id,
+           sender_name, from_me, sent_at, subject, body, raw)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT (conversation_id, external_id) DO NOTHING
+         RETURNING id`,
+        [conversationId, spaceId, msg.externalId, msg.senderExternalId ?? null,
+          msg.senderName ?? null, msg.fromMe ?? false, msg.sentAt, msg.subject ?? null, body, raw]);
+      stored = inserted.rows.length > 0;
+    }
+    if (stored) {
+      // Son başarılı eşitleme anı; her mesajda yazmamak için dakikada en fazla bir kez.
+      await tx.query(
+        `UPDATE accounts SET last_sync_at = now()
+          WHERE id = $1 AND (last_sync_at IS NULL OR last_sync_at < now() - interval '1 minute')`, [accountId]);
+    }
+    return stored;
   });
+}
+
+/** Kaynakta silinen mesajı burada da siler. Kayıt varsa true döner. */
+export async function deleteIncomingMessage(
+  db: Db, accountId: number, conversationExternalId: string, messageExternalId: string,
+): Promise<boolean> {
+  const { rows } = await db.query(
+    `DELETE FROM messages m USING conversations c
+      WHERE c.id = m.conversation_id AND c.account_id = $1 AND c.external_id = $2 AND m.external_id = $3
+      RETURNING m.id`, [accountId, conversationExternalId, messageExternalId]);
+  return rows.length > 0;
 }
 
 /** Konuşmayı geçmişiyle birlikte başka bir alana taşır (ör. bir grubu şirket hafızasına açmak). */
