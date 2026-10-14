@@ -6,6 +6,7 @@ import { buildServer } from './api/server.js';
 import { createAccount, getAccount, needsConsent, type AccountKind } from './core/accounts.js';
 import { grantConsent } from './core/consent.js';
 import { ingestMessage, moveConversation, type IncomingMessage } from './core/ingest.js';
+import { addSpaceMember, createTeamSpace } from './core/spaces.js';
 import { createUser, ensureCompanySpace } from './core/users.js';
 import { pgliteDb } from './db/pglite.js';
 
@@ -62,6 +63,14 @@ const connectors = {
   sessionDir: (kind: AccountKind, id: number) => join(tmpdir(), 'incompany-dev', kind, String(id)),
 };
 for (const a of [tg, sl, wa]) await connectors.start(a.id);
+
+// Panelde uyarının görünmesi için bir bağlayıcı sorunlu, ve Veli'nin kişisel (yöneticinin göremeyeceği) bir yazışması var.
+await db.query(`UPDATE accounts SET status = 'error', status_detail = 'invalid_auth: Slack anahtarı geçersiz', status_at = now() WHERE id = $1`, [sl.id]);
+const veliWa = await createAccount(db, SECRET, { kind: 'whatsapp', ownerUserId: veli.user.id, label: "Veli'nin WhatsApp'ı", defaultSpaceId: veli.personalSpaceId });
+await grantConsent(db, veliWa.id, veli.user.id, { dm: 'all', group: 'none', history: false, retention_days: 90 });
+await ingestMessage(db, veliWa.id, m('dm', '905003@s.whatsapp.net', 'Mehmet (özel)', 'v1', 'Mehmet', 'Maaş görüşmesi için perşembe uygun musun?', 1));
+const team = await createTeamSpace(db, ali.user.id, 'Satış');
+await addSpaceMember(db, ali.user.id, team.id, veli.user.id);
 
 const port = Number(process.env.PORT ?? 3000);
 const app = buildServer({ db, appSecret: SECRET, connectors, logger: false });
